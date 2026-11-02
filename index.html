@@ -779,6 +779,7 @@ function gFinish(){
   pip = null;
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; cancelAnimationFrame(raf); }
   $('btnShare').disabled = false; $('btnStopShare').disabled = true; $('btnAuto').disabled = true;
+  $('secZones').hidden = true;
   try { window.focus(); } catch(e) {}
 }
 $('btnGuide').onclick = async () => {
