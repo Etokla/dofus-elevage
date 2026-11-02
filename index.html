@@ -1,0 +1,1205 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Capture d'étable</title>
+<style>
+/* Layout : colonne unique, étapes empilées ; outil local de test */
+:root{
+  --bg:#f5f6f2; --panel:#ffffff; --fg:#1d221c; --muted:#5d6659; --line:#d9ddd3;
+  --accent:#3d7a4a; --accent-fg:#ffffff; --warn:#a8620c; --bad:#b23a32;
+  --font:"Segoe UI",system-ui,-apple-system,sans-serif; --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#141813; --panel:#1d221c; --fg:#e7ebe3; --muted:#9aa395; --line:#333a31;
+  --accent:#6fb07c; --accent-fg:#0e130e; --warn:#e0a24a; --bad:#ec7a70; color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 var(--font);padding:24px max(16px,env(safe-area-inset-left)) 48px}
+main{max-width:980px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+h1{font-size:22px;margin:0}
+.lead{color:var(--muted);margin:4px 0 0;max-width:70ch}
+section{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:12px}
+h2{font-size:15px;margin:0;display:flex;gap:8px;align-items:baseline}
+h2 .n{color:var(--accent);font-family:var(--mono)}
+p{margin:0}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button{font:inherit;padding:8px 14px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--fg);cursor:pointer}
+button.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.hint{color:var(--muted);font-size:13px}
+.stat{font-family:var(--mono);font-variant-numeric:tabular-nums}
+#stage{position:relative;max-width:100%;border:1px dashed var(--line);border-radius:6px;overflow:hidden;background:#000;min-height:120px}
+#preview{display:block;max-width:100%;height:auto;cursor:crosshair}
+#thumbs{display:flex;flex-wrap:wrap;gap:6px}
+#thumbs canvas{height:90px;width:auto;border:1px solid var(--line);border-radius:4px}
+pre{font-family:var(--mono);font-size:12.5px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px;max-height:340px;overflow:auto;margin:0;white-space:pre-wrap}
+.ok{color:var(--accent)} .warn{color:var(--warn)} .bad{color:var(--bad)}
+label{display:flex;gap:6px;align-items:center}
+input[type=range]{width:140px}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>Capture d'étable</h1>
+  <p class="lead">Prototype de test : partage la fenêtre Dofus, fais défiler ton étable, et vérifie si la capture et la lecture tiennent la route. Tout reste sur ton PC : les images ne sont envoyées nulle part.</p>
+</header>
+
+<section>
+  <h2><span class="n">1</span> Partager la fenêtre Dofus</h2>
+  <p class="hint">Seule la fenêtre Dofus est acceptée : la page lit sa barre de titre (classe de ton personnage) ; si tu partages autre chose, le partage est coupé aussitôt, sans rien afficher ni envoyer. Tu peux ouvrir l'Élevage avant ou après le partage. Dofus doit être en mode fenêtré (pas plein écran). La liste des fenêtres s'ouvre directement : clique sur la fenêtre Dofus (son titre commence par le nom de ton personnage), puis sur « Partager ». Tu ne fais ce choix qu'une fois par session : garde le partage ouvert entre deux relevés. La page ne peut que voir l'image : elle ne contrôle ni le clavier, ni la souris, ni tes fichiers.</p>
+  <div class="row">
+    <button id="btnShare" class="primary">Partager une fenêtre</button>
+    <button id="btnStopShare" disabled>Arrêter le partage</button>
+    <span id="shareState" class="hint">Aucun partage en cours.</span>
+  </div>
+</section>
+
+<section>
+  <h2><span class="n">2</span> Délimiter la liste des montures</h2>
+  <p class="hint">La détection automatique se lance au partage, quelle que soit la position de défilement : les rectangles couvrent toute la partie visible de la liste (vert) et du panneau FILTRES (orange), mesurée grâce à leurs barres de défilement. Vérifie-les sur l'aperçu. Sinon, trace-les à la main : un rectangle autour de la liste, sur toute sa largeur, sans le titre « ETABLE » ni les boutons. Laisse une petite marge au-dessus de la première monture : une carte collée au bord du rectangle est considérée comme coupée et ignorée.</p>
+  <div id="stage"><canvas id="preview" width="640" height="360"></canvas></div>
+  <div class="row">
+    <button id="btnAuto" disabled class="primary">Détecter les zones automatiquement</button>
+    <span id="autoState" class="hint"></span>
+  </div>
+  <div class="row">
+    <label class="hint"><input type="radio" name="zone" value="liste" checked> Je trace la liste des montures</label>
+    <label class="hint"><input type="radio" name="zone" value="compteurs"> Je trace le panneau FILTRES (compteurs)</label>
+  </div>
+  <span id="cropState" class="hint">Zone liste : fenêtre entière.</span> <span id="cropCntState" class="hint">Zone compteurs : non tracée.</span>
+</section>
+
+<section>
+  <h2><span class="n">★</span> Parcours guidé</h2>
+  <p class="hint">Une fois la fenêtre Dofus partagée et les zones vérifiées sur l'aperçu, lance le parcours : une petite fenêtre reste par-dessus Dofus et t'indique quoi faire, étape par étape (compteurs, mâles, femelles, reproducteurs, succès Gen 10). À la fin, tout est réuni dans un seul PDF.</p>
+  <div class="row"><button id="btnGuide" disabled class="primary">Lancer le parcours guidé</button><span id="guideState" class="hint"></span></div>
+  <div class="row" id="guideOut"></div>
+</section>
+
+<section>
+  <h2><span class="n">3</span> Enregistrer le défilement</h2>
+  <p class="hint">Place la liste tout en haut, puis lance l'enregistrement : un mini-compteur flottant s'ouvre par-dessus Dofus (déplace-le dans un coin). Fais glisser la barre de défilement vers le bas. Si le compteur passe au rouge et qu'un bip retentit, remonte de quelques lignes et reprends plus lentement. Une image n'est gardée que si elle a changé depuis la précédente.</p>
+  <div class="row">
+    <button id="btnRec" disabled class="primary">Démarrer l'enregistrement</button>
+    <button id="btnStopRec" disabled>Arrêter</button>
+    <button id="btnReset" disabled>Recommencer</button>
+    <button id="btnDiag" disabled>Diagnostic (2 s)</button>
+    <a id="dlDiag" hidden download="diagnostic.png"><button type="button">Télécharger le diagnostic</button></a>
+    <label class="hint">Sensibilité <input id="sens" type="range" min="1" max="20" value="6"></label>
+  </div>
+  <p id="speed" class="hint">Vitesse : en attente.</p>
+  <p class="stat" id="recStats">Images analysées : 0 · gardées : 0</p>
+  <div id="thumbs"></div>
+</section>
+
+<section>
+  <h2><span class="n">3 bis</span> Capturer les compteurs du jeu</h2>
+  <p class="hint">Pour vérifier le résultat sans rien saisir. Trace d'abord la zone du panneau FILTRES (étape 2). Lance la capture, puis fais défiler le panneau FILTRES de haut en bas en dépliant les sections utiles (Génération, Sexe, Couleurs). Défile normalement : l'outil garde une vue chaque fois que le panneau a avancé d'environ un tiers de sa hauteur, et les ajoute à la fin du PDF. Vérifie dans les vignettes que tout le panneau y est.</p>
+  <div class="row">
+    <button id="btnCnt" disabled class="primary">Capturer les compteurs</button>
+    <button id="btnCntStop" disabled>Arrêter</button>
+    <span id="cntStats" class="stat">Vues gardées : 0</span>
+  </div>
+  <div id="cntThumbs" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+</section>
+
+<section>
+  <h2><span class="n">4</span> Isoler et dédoublonner les montures</h2>
+  <p class="hint">Chaque capture est découpée en cartes de monture complètes (les cartes coupées en haut et en bas sont ignorées). Les captures sont ensuite alignées sur les cartes qu'elles ont en commun, ce qui évite les doublons. Deux montures identiques restent deux montures.</p>
+  <div class="row">
+    <label class="hint">Contenu de la capture
+      <select id="sexe" style="font:inherit;padding:4px 6px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--fg)">
+        <option value="tout">Toute l'étable</option><option value="males">Mâles (filtre du jeu)</option><option value="femelles">Femelles (filtre du jeu)</option>
+      </select></label>
+    <button id="btnProc" disabled class="primary">Créer les planches</button>
+    <label class="hint">Total attendu (affiché dans l'étable) <input id="expected" type="number" min="0" style="width:80px;font:inherit;padding:4px 6px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--fg)"></label>
+  </div>
+  <p class="stat" id="procStats"></p>
+  <p class="hint" id="sheetsHint" hidden>Planches prêtes : chacune contient jusqu'à 40 montures, sans doublon ni coupure. Ce sont elles qu'une IA de vision lira (nom, génération, sexe).</p>
+  <div class="row" id="sheets"></div>
+</section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let stream = null, video = document.createElement('video'), raf = null;
+let crop = null, cropCnt = null, drag = null, frames = [], recTimer = null, lastSig = null, analysed = 0;
+video.muted = true; video.playsInline = true;
+
+const prev = $('preview'), pctx = prev.getContext('2d');
+
+$('btnShare').onclick = () => startShare(navigator.mediaDevices, false);
+// md : l'API de partage de la fenêtre qui a reçu le clic (page ou fenêtre flottante) ; focusDofus : met Dofus au premier plan après le choix
+async function startShare(md, focusDofus){
+  try {
+    // garde le focus sur cette page au lieu de basculer sur Dofus (Chrome/Edge 109+)
+    const realm = (md === navigator.mediaDevices || !pip) ? window : pip;   // objets créés dans la fenêtre qui lance le partage
+    const controller = ('CaptureController' in realm) ? new realm.CaptureController() : null;
+    // choix simplifié : s'ouvre directement sur l'onglet « Fenêtre », sans proposer cet onglet ni le changement de source en cours de partage
+    const opts = {video:{frameRate:{ideal:30}, displaySurface: 'window'}, audio:false,
+                  selfBrowserSurface: 'exclude', surfaceSwitching: 'exclude', systemAudio: 'exclude'};
+    if (controller) opts.controller = controller;
+    stream = await md.getDisplayMedia(opts);
+    if (controller && controller.setFocusBehavior){
+      try { controller.setFocusBehavior(focusDofus ? 'focus-captured-surface' : 'no-focus-change'); } catch (e) {}   // doit être appelé tout de suite
+    }
+  } catch (e) { $('shareState').textContent = 'Partage refusé ou annulé.'; return false; }
+  // Vérification AVANT toute lecture d'image : seule une fenêtre Dofus est acceptée (protection des données personnelles)
+  const track = stream.getVideoTracks()[0], rawLabel = track.label || ''; lastLabel = rawLabel;
+  // certains systèmes (macOS notamment) donnent un identifiant technique au lieu du titre : on le traite comme « titre inconnu »
+  const label = /^(window|screen|web-contents-media-stream)[:\s]/i.test(rawLabel) || /^\d+$/.test(rawLabel) ? '' : rawLabel;
+  const surface = (track.getSettings && track.getSettings().displaySurface) || '';
+  const isDofus = /dofus/i.test(label) || /^.+ - .+ - \d+(\.\d+)+ - /.test(label);
+  let refus = '';
+  if (surface && surface !== 'window') refus = surface === 'monitor'
+      ? 'Tu as partagé ton écran entier : il peut contenir des informations personnelles. Partage uniquement la fenêtre Dofus.'
+      : 'Tu as partagé un onglet du navigateur. Partage uniquement la fenêtre Dofus.';
+  else if (label && !isDofus) refus = `La fenêtre « ${label} » n'est pas Dofus. Pour protéger tes données, le partage a été coupé : choisis la fenêtre du jeu.`;
+  if (refus){
+    stream.getTracks().forEach(t => t.stop()); stream = null;      // aucune image n'a été lue
+    $('shareState').textContent = refus; $('shareState').className = 'hint bad'; return false;
+  }
+  video.srcObject = stream; await video.play();
+  track.addEventListener('ended', stopShare);
+  if (isDofus){ waitingElevage = true; }
+  else { verifying = true; $('shareState').textContent = '① Est-ce Dofus ? Lecture de la barre de titre de la fenêtre (rien n’est affiché ni envoyé)…'; $('shareState').className = 'hint warn'; verifyT0 = performance.now(); checkDofusTitle(); }
+  $('btnShare').disabled = true; $('btnStopShare').disabled = false; $('btnRec').disabled = false; $('btnDiag').disabled = false; $('btnCnt').disabled = !cropCnt; $('btnRec').disabled = true; $('btnDiag').disabled = true; guideReady();
+  if (waitingElevage) setTimeout(() => waitElevage(label), 300);   // (titre fourni par le navigateur : rare dans Chrome)
+  draw();
+  return true;
+}
+$('btnStopShare').onclick = stopShare;
+function stopShare(){
+  verifying = false; waitingElevage = false;
+  if (recTimer) stopRec();
+  stream && stream.getTracks().forEach(t => t.stop()); stream = null;
+  cancelAnimationFrame(raf);
+  $('shareState').textContent = 'Partage arrêté (fenêtre fermée ou partage interrompu). Relance Dofus si besoin, puis partage à nouveau.'; $('shareState').className = 'hint';
+  if (guided && pip && !pip.closed){ pip.document.body.style.background = '#7a1f1a'; const t = pip.document.getElementById('t'); if (t) t.textContent = 'Partage interrompu : la fenêtre Dofus a été fermée ou le partage arrêté.'; }
+  $('btnShare').disabled = false; $('btnStopShare').disabled = true; $('btnRec').disabled = true; $('btnAuto').disabled = true;
+}
+
+let verifying = false, verifyT0 = 0;
+function draw(){
+  if (!stream) return;
+  if (verifying){
+    prev.width = 640; prev.height = 360; pctx.fillStyle = '#111'; pctx.fillRect(0, 0, 640, 360);
+    pctx.fillStyle = '#ddd'; pctx.font = '16px sans-serif'; pctx.textAlign = 'center';
+    pctx.fillText('Aperçu masqué : vérification que la fenêtre est bien Dofus…', 320, 180); pctx.textAlign = 'start';
+    raf = requestAnimationFrame(draw); return;
+  }
+  const w = video.videoWidth, h = video.videoHeight;
+  if (w && (prev.width !== w || prev.height !== h)) {
+    const resized = prev.width !== 640 || prev.height !== 360;   // pas au premier affichage
+    prev.width = w; prev.height = h;
+    if (resized && !recTimer && !cntOn){
+      crop = null; cropCnt = null; knownCardH = 0; $('cropState').textContent = 'Zone liste : à redétecter.'; $('cropCntState').textContent = 'Zone compteurs : à redétecter.';
+      $('autoState').textContent = 'La fenêtre a changé de taille : nouvelle détection…'; guideReady(); setTimeout(runAutoZones, 500);
+    }
+  }
+  pctx.drawImage(video, 0, 0);
+  const zoneMode = document.querySelector('input[name=zone]:checked').value;
+  const lw = Math.max(2, w/400); pctx.lineWidth = lw;
+  const rl = drag && zoneMode === 'liste' ? rectFrom(drag) : crop;
+  const rc = drag && zoneMode === 'compteurs' ? rectFrom(drag) : cropCnt;
+  if (rl) { pctx.strokeStyle = '#4fd16a'; pctx.strokeRect(rl.x, rl.y, rl.w, rl.h); }
+  if (rc) { pctx.strokeStyle = '#ff9f3a'; pctx.strokeRect(rc.x, rc.y, rc.w, rc.h); }
+  raf = requestAnimationFrame(draw);
+}
+
+// Sélection de la zone
+function toCanvas(ev){ const b = prev.getBoundingClientRect(); return {x:(ev.clientX-b.left)*prev.width/b.width, y:(ev.clientY-b.top)*prev.height/b.height}; }
+function rectFrom(d){ return {x:Math.min(d.a.x,d.b.x), y:Math.min(d.a.y,d.b.y), w:Math.abs(d.b.x-d.a.x), h:Math.abs(d.b.y-d.a.y)}; }
+prev.addEventListener('pointerdown', ev => { if (!stream) return; const p = toCanvas(ev); drag = {a:p, b:p}; prev.setPointerCapture(ev.pointerId); });
+prev.addEventListener('pointermove', ev => { if (drag) drag.b = toCanvas(ev); });
+// Détection automatique des zones (liste des montures + panneau FILTRES), indépendante de la disposition
+// img = {w, h, g: Float32Array} en niveaux de gris
+function autoZones(img, detectCards){
+  const {w, h, g} = img, P = (x, y) => g[y*w + x];
+  // ---- 0) Panneau FILTRES (cherché d'abord : il désigne la bonne liste) : colonne de cases à cocher (carré clair, intérieur sombre)
+  const boxes = [];
+  for (let y = 1; y < h - 30; y++){
+    for (let x = 1; x < w - 30; x++){
+      const v = P(x, y); if (v < 85 || P(x-1, y) > v - 35 || P(x, y-1) > v - 35) continue;   // coin haut-gauche
+      let L = 0; while (x + L < w && P(x + L, y) > v - 30) L++;
+      if (L < 5 || L > 30) continue;
+      const cx = x + (L >> 1);
+      let yy = y + 1; while (yy < h && P(cx, yy) > v - 30 && yy - y < 4) yy++;          // bord haut (épaisseur)
+      const top = yy; while (yy < h && P(cx, yy) < v - 45) yy++;           // intérieur sombre
+      const inner = yy - top; if (inner < 2) continue;
+      const H = yy - y; if (Math.abs(H - L) > Math.max(3, L * 0.35) || yy >= h) continue;   // carré
+      const lit = (px, py) => Math.max(P(px, py), P(px-1, py), P(px+1, py)) > v - 40;
+      let ok = true;
+      for (let k = 2; k < H - 1 && ok; k++){ if (!lit(x, y + k) || !lit(x + L - 1, y + k)) ok = false; }
+      if (!ok) continue;
+      boxes.push({x, y, L}); x += L;
+    }
+  }
+  const cols = [];
+  for (const b of boxes){ const c = cols.find(c => Math.abs(c.x - b.x) <= 3 && Math.abs(c.L - b.L) <= 2); if (c) c.b.push(b); else cols.push({x: b.x, L: b.L, b: [b]}); }
+  cols.sort((a, b) => b.b.length - a.b.length);
+  // ---- 1) Liste : bandes horizontales uniformes longues (haut/bas des cartes), regroupées par colonne
+  const runs = [];
+  for (let y = 0; y < h; y++){
+    let x0 = 0;
+    for (let x = 1; x <= w; x++){
+      if (x === w || Math.abs(P(x, y) - P(x-1, y)) > 4 || Math.abs(P(x, y) - P(x0, y)) > 8){
+        if (x - x0 >= 200) runs.push({y, x0, x1: x});
+        x0 = x;
+      }
+    }
+  }
+  const clusters = [];
+  for (const r of runs){
+    const c = clusters.find(c => Math.abs(c.x0 - r.x0) <= 6 && Math.abs(c.x1 - r.x1) <= 6);
+    if (c){ c.n++; c.ya = Math.min(c.ya, r.y); c.yb = Math.max(c.yb, r.y); } else clusters.push({x0: r.x0, x1: r.x1, n: 1, ya: r.y, yb: r.y});
+  }
+  let best = null; const cands = [];
+  for (const c of clusters.filter(c => c.n >= 10)){
+    // seulement la hauteur couverte par les bandes de cette colonne : le reste de l'image (jeu, autres fenêtres) fausserait les seuils
+    const cw = c.x1 - c.x0, ya = Math.max(0, c.ya - 30), yb = Math.min(h, c.yb + 30), sh = yb - ya, sub0 = new Float32Array(cw * sh);
+    for (let y = 0; y < sh; y++) for (let x = 0; x < cw; x++) sub0[y*cw + x] = P(c.x0 + x, ya + y);
+    const cards = detectCards({w: cw, h: sh, g: sub0}).cards.map(([a, b]) => [a + ya, b + ya]);
+    const S = (x, y) => P(c.x0 + x, y);
+    // plus longue suite de cartes régulièrement espacées
+    let run = [], bestRun = [];
+    for (let i = 0; i < cards.length; i++){
+      if (run.length && Math.abs((cards[i][0] - run[run.length-1][0]) - (run.length > 1 ? run[1][0] - run[0][0] : cards[i][0] - run[run.length-1][0])) > 3){ run = []; }
+      run.push(cards[i]); if (run.length > bestRun.length) bestRun = run.slice();
+    }
+    if (bestRun.length < 3) continue;
+    // vraies cartes de monture : contenu varié (icône, texte), séparations plus sombres, forme allongée
+    let textured = 0, darkGap = 0;
+    const cH = bestRun[0][1] - bestRun[0][0];
+    for (let i = 0; i < bestRun.length; i++){
+      const [y0, y1] = bestRun[i]; let m = 0, m2 = 0, n = 0;
+      for (let y = y0 + 2; y < y1 - 2; y += 2) for (let x = Math.floor(cw * 0.05); x < cw * 0.95; x += 3){ const v = S(x, y); m += v; m2 += v*v; n++; }
+      m /= n; if (Math.sqrt(Math.max(0, m2/n - m*m)) > 14) textured++;
+      if (i > 0){ const gy = (bestRun[i-1][1] + y0) >> 1; let gm = 0, k = 0; for (let x = 0; x < cw; x += 3){ gm += S(x, gy); k++; } if (gm / k < m - 5) darkGap++; }
+    }
+    // largeur réelle des cartes (bande uniforme du haut de chaque carte) : doit couvrir la colonne trouvée
+    const xs0 = [], xs1 = [], ccx = (c.x0 + c.x1) >> 1;
+    for (const [y0] of bestRun){ const y = y0 + 1, ref = P(ccx, y); let a = ccx, b = ccx;
+      while (a > 0 && Math.abs(P(a-1, y) - ref) <= 6) a--; while (b < w-1 && Math.abs(P(b+1, y) - ref) <= 6) b++; xs0.push(a); xs1.push(b); }
+    xs0.sort((p, q) => p - q); xs1.sort((p, q) => p - q);
+    const rw = xs1[xs1.length >> 1] - xs0[xs0.length >> 1] + 1, ratio = rw / cH;
+    if (rw < cw * 0.6) continue;   // une grille d'icônes (inventaire) n'a pas de bande continue sur toute la largeur
+    if (textured < bestRun.length * 0.6 || darkGap < (bestRun.length - 1) * 0.6 || ratio < 5 || ratio > 18) continue;
+    cands.push({x0: c.x0, x1: c.x1, cards: bestRun});
+  }
+  // la liste de l'Élevage est juste à droite du panneau FILTRES : avec un filtre actif elle peut être courte (ex. 5 reproducteurs)
+  // et une autre liste (Enclos) plus longue ; on prend alors la plus proche à droite des cases
+  const fc = cols.length && cols[0].b.length >= 5 ? cols[0] : null;
+  const nearF = fc ? cands.filter(c => c.x0 > fc.x && c.x0 - fc.x < 40 * fc.L).sort((a, b) => a.x0 - b.x0) : [];
+  // la plus proche des cases ; parmi les candidats de cette même colonne (écart < 3 cases), celui qui a le plus de cartes
+  if (nearF.length) best = nearF.filter(c => c.x0 - nearF[0].x0 < 3 * fc.L).sort((a, b) => b.cards.length - a.cards.length)[0];
+  else for (const c of cands) if (c.cards.length >= 6 && (!best || c.cards.length > best.cards.length)) best = c;
+  let list = null;
+  if (best){
+    // largeur réelle des cartes : bande uniforme du haut de chaque carte, étendue de part et d'autre
+    const xs0 = [], xs1 = [], cx = (best.x0 + best.x1) >> 1;
+    for (const [y0] of best.cards){
+      const y = y0 + 1, ref = P(cx, y); let a = cx, b = cx;
+      while (a > 0 && Math.abs(P(a-1, y) - ref) <= 6) a--;
+      while (b < w-1 && Math.abs(P(b+1, y) - ref) <= 6) b++;
+      xs0.push(a); xs1.push(b);
+    }
+    xs0.sort((p, q) => p - q); xs1.sort((p, q) => p - q);
+    best.x0 = xs0[xs0.length >> 1]; best.x1 = xs1[xs1.length >> 1] + 1;
+    let top = best.cards[0][0], bot = best.cards[best.cards.length-1][1]; const pad = 3;
+    // hauteur visible de la liste = piste de sa barre de défilement (indépendante de la position de défilement)
+    const gy = best.cards[0][1] + 2, lbg = P(Math.min(w-1, best.x1 + 3), gy);
+    const offL = (x, y) => P(x, y) - lbg > 6;
+    for (let x = best.x1 + 1; x < Math.min(w, best.x1 + 40); x++){
+      let n = 0, k = 0; for (let y = top; y <= bot; y++){ k++; if (offL(x, y)) n++; }
+      if (n / k > 0.95){
+        const mid = (top + bot) >> 1;
+        const along = (dir) => { let y = mid, miss = 0; while (y + dir >= 0 && y + dir < h){ y += dir; if (offL(x, y)) miss = 0; else if (++miss > 2) return y - dir * 3; } return y; };
+        const t0 = along(-1), t1 = along(1);
+        if (t1 - t0 >= bot - top - 4){ top = Math.min(top, t0); bot = Math.max(bot, t1); }
+        break;
+      }
+    }
+    // cartes complètes oubliées en haut ou en bas (piste de défilement plus courte que la liste, ex. sur Mac) : on les ajoute
+    const cs = best.cards, pitch = cs.length > 1 ? Math.round((cs[cs.length-1][0] - cs[0][0]) / (cs.length - 1)) : 0, ch = cs[0][1] - cs[0][0];
+    const bandOk = y => { if (y < 0 || y >= h) return false; const ref = P(cx, y); let n = 0, k = 0;
+      for (let x = best.x0 + 2; x < best.x1 - 2; x += 2){ k++; if (Math.abs(P(x, y) - ref) <= 6) n++; } return n / k > 0.85; };
+    const stat = y0 => { let m = 0, m2 = 0, n = 0; for (let y = y0 + 2; y < y0 + ch - 2; y += 2) for (let x = best.x0 + 3; x < best.x1 - 3; x += 3){ const v = P(x, y); m += v; m2 += v*v; n++; }
+      m /= n; return {m, sd: Math.sqrt(Math.max(0, m2/n - m*m)), band: P(cx, y0 + 1)}; };
+    const med = a => a.sort((p, q) => p - q)[a.length >> 1], ref = cs.map(([y0]) => stat(y0));
+    const mRef = med(ref.map(r => r.m)), bRef = med(ref.map(r => r.band));
+    // une vraie carte : bandes uniformes en haut et en bas, même teinte de bande et même luminosité moyenne que les autres cartes
+    const cardAt = y0 => { if (y0 < 0 || y0 + ch >= h) return false; if (!bandOk(y0 + 1) || !bandOk(y0 + ch - 2)) return false;
+      const st = stat(y0); return st.sd > 14 && Math.abs(st.band - bRef) <= 8 && Math.abs(st.m - mRef) <= 12; };
+    if (pitch > ch){
+      for (let k = 1, y0 = cs[cs.length-1][0] + pitch; k <= 3 && y0 + ch > bot && cardAt(y0); k++, y0 += pitch) bot = Math.max(bot, y0 + ch);
+      for (let k = 1, y0 = cs[0][0] - pitch; k <= 3 && y0 < top && cardAt(y0); k++, y0 -= pitch) top = Math.min(top, y0);
+    }
+    list = {x: Math.max(0, best.x0 - 2), y: Math.max(0, top - pad), w: Math.min(w, best.x1 + 2) - Math.max(0, best.x0 - 2), h: Math.min(h, bot + pad) - Math.max(0, top - pad)};
+  }
+  let cnt = null;
+  if (cols.length && cols[0].b.length >= 5){
+    const c = cols[0], L = c.L, ys = c.b.map(b => b.y).sort((p, q) => p - q);
+    const yMid = ys[ys.length >> 1] + (L >> 1);
+    // fond du panneau : juste à gauche des cases
+    const bgs = c.b.map(b => P(Math.max(0, b.x - (L >> 1)), b.y + (L >> 1))).sort((p, q) => p - q), bg = bgs[bgs.length >> 1];
+    const off = (x, y) => P(x, y) - bg > 6;   // la piste est plus claire que le fond
+    // barre de défilement du panneau : colonne qui diffère du fond sur toute la hauteur des cases
+    let track = -1;
+    const xEnd = Math.min(w - 1, list && list.x > c.x ? list.x - 1 : c.x + 25*L);
+    for (let x = c.x + 8*L; x < xEnd && track < 0; x++){
+      let n = 0, k = 0; for (let y = ys[0]; y <= ys[ys.length-1] + L; y++){ k++; if (off(x, y)) n++; }
+      if (n / k > 0.95) track = x;
+    }
+    let y0, y1, x1;
+    if (track >= 0){
+      // hauteur visible du panneau = hauteur de la piste de défilement (tolère les fines lignes de séparation)
+      const along = (dir) => { let y = yMid, miss = 0; while (y + dir >= 0 && y + dir < h){ y += dir; if (off(track, y)) miss = 0; else if (++miss > 2) return y - dir * 3; } return y; };
+      y0 = along(-1); y1 = along(1); x1 = track - 1;
+    } else {
+      y0 = Math.max(0, ys[0] - 3*L); y1 = Math.min(h, ys[ys.length-1] + 4*L);
+      x1 = (list && list.x > c.x && list.x - c.x < 25*L) ? list.x - 4 : Math.min(w, c.x + 15*L);
+    }
+    const x0 = Math.max(0, c.x - L);
+    cnt = {x: x0, y: y0, w: x1 - x0, h: y1 - y0};
+  }
+  if (!list) cnt = null;   // sans liste, la colonne de cases trouvée n'est pas fiable
+  return {list, cnt, nCards: best ? best.cards.length : 0, nBoxes: cols.length ? cols[0].b.length : 0};
+}
+
+// Image fraîche du partage : la balise <video> peut rester figée quand Chrome est caché derrière Dofus
+async function freshFrame(){
+  const fromVideo = () => { const c = document.createElement('canvas'); c.width = video.videoWidth; c.height = video.videoHeight; c.getContext('2d').drawImage(video, 0, 0); return c; };
+  if (!('MediaStreamTrackProcessor' in window) || !stream) return video.videoWidth ? fromVideo() : null;
+  return Promise.race([grabFullFrame(), new Promise(r => setTimeout(() => r(video.videoWidth ? fromVideo() : null), 1500))]);
+}
+let lastCheckSize = '', lastLabel = '';
+async function hasElevage(n = 0){
+  const f = await freshFrame(); if (!f || !f.width) return false;
+  lastCheckSize = `${f.width}×${f.height}`;
+  const look = k => { const c = document.createElement('canvas'); c.width = Math.round(f.width * k); c.height = Math.round(f.height * k);
+    c.getContext('2d', {willReadFrequently: true}).drawImage(f, 0, 0, c.width, c.height);
+    return !!autoZones(toGray(c), detectCards).list; };       // l'image n'est ni affichée ni conservée
+  // d'abord en réduit (~1400 px, rapide) ; un essai sur trois en pleine résolution si la liste est petite à l'écran
+  const k = Math.min(1, 1400 / f.width);
+  if (look(k)) return true;
+  lastCheckSize += ' ✗';
+  return k < 1 && n % 2 === 1 ? look(1) : false;
+}
+// ---- Étape 1 : est-ce Dofus ? Chrome ne donne pas le titre de la fenêtre, mais la barre de titre est dans l'image :
+// on la lit (Tesseract, dans le navigateur) et on y cherche une classe de Dofus (« Perso - Sadida - 3.7.12.12 - Release »).
+const CLASSES = ['feca','osamodas','enutrof','sram','xelor','ecaflip','eniripsa','iop','cra','sadida','sacrieur','pandawa','roublard','zobal','steamer','eliotrope','huppermage','ouginak','forgelance'];
+let ocrP = null;
+function ocrWorker(){
+  if (!ocrP) ocrP = new Promise((ok, ko) => {
+    const go = () => Tesseract.createWorker('eng').then(async w => { await w.setParameters({tessedit_pageseg_mode: '7'}); ok(w); }, ko);
+    if (window.Tesseract) return go();
+    const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+    sc.onload = go; sc.onerror = () => ko(new Error('chargement impossible')); document.head.appendChild(sc);
+  });
+  return ocrP;
+}
+setTimeout(() => ocrWorker().catch(() => { ocrP = null; }), 1500);   // préchargé une fois, puis en cache
+const normTxt = t => t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+async function readTitleBar(){
+  const f = await freshFrame(); if (!f || !f.width) return {band: false};
+  const W = f.width, hh = Math.min(f.height, 120), d = f.getContext('2d', {willReadFrequently: true}).getImageData(0, 0, W, hh).data;
+  // couleur de fond de la barre = couleur la plus fréquente de la 3e ligne
+  const cnt = new Map(); let bg = 0, bn = 0;
+  for (let x = 0; x < W; x++){ const p = (2*W + x)*4, k = (d[p]>>4)<<8 | (d[p+1]>>4)<<4 | (d[p+2]>>4); const n = (cnt.get(k) || 0) + 1; cnt.set(k, n); if (n > bn){ bn = n; bg = p; } }
+  const [br, bgG, bb] = [d[bg], d[bg+1], d[bg+2]];
+  const frac = y => { let n = 0; for (let x = 0; x < W; x++){ const p = (y*W + x)*4; if (Math.abs(d[p]-br) + Math.abs(d[p+1]-bgG) + Math.abs(d[p+2]-bb) < 40) n++; } return n / W; };
+  if (frac(2) < 0.6) return {band: false};
+  let y = 3; while (y < hh && frac(y) >= 0.55) y++;
+  if (y < 14 || y >= 100) return {band: false};
+  const k = 3, c = document.createElement('canvas'); c.width = W * k; c.height = y * k;
+  const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; x.filter = 'grayscale(1)'; x.drawImage(f, 0, 0, W, y, 0, 0, c.width, c.height);
+  const w = await ocrWorker(); const {data} = await w.recognize(c);
+  const t = normTxt(data.text || '');
+  const cls = CLASSES.find(n => new RegExp(`(^|[^a-z])${n}([^a-z]|$)`).test(t));
+  const ver = /\d+\.\d+\.\d+/.test(t) && /release|beta/.test(t);
+  return {band: true, text: data.text || '', cls: cls || (ver ? '?' : null)};
+}
+async function checkDofusTitle(){
+  let r; try { r = await readTitleBar(); } catch (e) { r = {band: false, err: e}; }
+  if (!stream || !verifying) return;
+  if (r.band && r.cls){
+    verifying = false; waitingElevage = true;
+    const nom = r.cls === '?' ? 'barre de titre' : 'classe ' + r.cls[0].toUpperCase() + r.cls.slice(1);
+    waitElevage(nom);
+  } else if (r.band && normTxt(r.text).replace(/[^a-z0-9]/g, '').length >= 4){
+    verifying = false; stopShare();
+    $('shareState').textContent = 'Ce n’est pas une fenêtre Dofus (aucune classe dans sa barre de titre) : le partage a été coupé, sans rien afficher ni envoyer. Partage la fenêtre du jeu.';
+    $('shareState').className = 'hint bad';
+  } else {
+    // pas de barre de titre lisible (plein écran, lecteur indisponible) : on se rabat sur la liste des montures
+    $('shareState').textContent = 'Barre de titre illisible (Dofus en plein écran ?) : vérification par la liste des montures de l’Élevage (3 s max)…';
+    verifyT0 = performance.now(); verifyByImage(0);
+  }
+}
+// Étape 2 (fenêtre déjà reconnue comme Dofus par son titre) : attendre que l'Élevage soit ouvert, sans limite de temps
+let waitingElevage = false;
+async function waitElevage(label){
+  if (!stream || !waitingElevage) return;
+  if (await hasElevage(waitElevage.n = (waitElevage.n || 0) + 1)){
+    waitingElevage = false;
+    $('shareState').textContent = `① Fenêtre Dofus reconnue (${label}) · ② Élevage ouvert : partage prêt.`; $('shareState').className = 'hint ok';
+    $('btnRec').disabled = false; $('btnDiag').disabled = false; $('btnAuto').disabled = false; runAutoZones(); guideReady();
+  } else {
+    $('shareState').textContent = `① Fenêtre Dofus reconnue (${label}) · ② En attente : ouvre la fenêtre Élevage dans Dofus (liste des montures visible).`; $('shareState').className = 'hint warn';
+    setTimeout(() => waitElevage(label), 1000);
+  }
+}
+async function verifyByImage(n){
+  if (!stream || !verifying) return;
+  const t0 = performance.now(), ok = await hasElevage(n);
+  if (!stream || !verifying) return;
+  if (!ok) $('shareState').textContent = `Vérification de la fenêtre… Chrome ne donne pas son titre : la seule preuve que c’est Dofus est la liste des montures de l’Élevage, cherchée dans l’image (rien n’est affiché ni envoyé). (image ${lastCheckSize}, essai ${n + 1})`;
+  if (ok){
+    verifying = false;
+    $('shareState').textContent = `Fenêtre Élevage de Dofus reconnue en ${((performance.now() - verifyT0)/1000).toFixed(1)} s : partage en cours. [titre reçu : « ${stream.getVideoTracks()[0].label} »]`; $('shareState').className = 'hint ok';
+    $('btnRec').disabled = false; $('btnDiag').disabled = false; $('btnAuto').disabled = false; runAutoZones(); guideReady();
+  } else if (performance.now() - verifyT0 > 3000 && n >= 5){
+    verifying = false; stopShare();
+    $('shareState').textContent = `Ce n’est pas la fenêtre Élevage de Dofus (aucune liste de montures dans l’image) : le partage a été coupé, sans rien afficher ni envoyer. Ouvre l’Élevage dans Dofus, puis partage à nouveau la fenêtre du jeu. [titre reçu : « ${lastLabel} »] (image ${lastCheckSize}, ${n + 1} essais, ${((performance.now() - verifyT0)/1000).toFixed(1)} s)`;
+    $('shareState').className = 'hint bad';
+  } else setTimeout(() => verifyByImage(n + 1), Math.max(100, 500 - (performance.now() - t0)));
+}
+// Hauteur de la liste encadrée par deux repères fixes de la fenêtre Élevage : le titre « ETABLE » au-dessus et le bouton
+// « GÉNÉTIQUE » en dessous (lus par Tesseract). Plus sûr que la barre de défilement, dont la longueur varie selon l'écran.
+async function frameByLabels(c, L, nCards){
+  try {
+    const pitch = Math.max(20, Math.round(L.h / Math.max(1, nCards)));
+    const x0 = L.x, x1 = Math.min(c.width, L.x + L.w), y0 = Math.max(0, L.y - 3 * pitch), y1 = Math.min(c.height, L.y + L.h + 3 * pitch);
+    const k = 2, t = document.createElement('canvas'); t.width = (x1 - x0) * k; t.height = (y1 - y0) * k;
+    const x = t.getContext('2d'); x.filter = 'grayscale(1) invert(1)'; x.drawImage(c, x0, y0, x1 - x0, y1 - y0, 0, 0, t.width, t.height);
+    const w = await ocrWorker();
+    await w.setParameters({tessedit_pageseg_mode: '11'});
+    let data; try { ({data} = await w.recognize(t)); } finally { await w.setParameters({tessedit_pageseg_mode: '7'}); }
+    const words = (data.words || []).map(o => ({t: normTxt(o.text).replace(/[^a-z]/g, ''), b: o.bbox}));
+    const et = words.filter(o => o.t === 'etable').sort((a, b) => a.b.y0 - b.b.y0)[0];
+    const ge = words.filter(o => /^g.n.tique$/.test(o.t)).sort((a, b) => b.b.y0 - a.b.y0)[0];
+    if (!et || !ge || L !== crop) return;   // repères introuvables, ou zone changée entre-temps : on garde la mesure par la barre
+    const top = y0 + Math.round(et.b.y1 / k) + 2, th = (ge.b.y1 - ge.b.y0) / k;
+    const bot = y0 + Math.round(ge.b.y0 / k) - 2;   // juste au-dessus du texte du bouton : mieux vaut un bout de bouton dans la zone qu’une dernière carte coupée
+    if (bot - top < pitch * 2) return;
+    crop = {x: L.x, y: top, w: L.w, h: bot - top};
+    $('cropState').textContent = `Zone liste : ${crop.w} × ${crop.h} px (auto, encadrée par ETABLE et GÉNÉTIQUE).`;
+    guideReady();
+  } catch (e) {}
+}
+function runAutoZones(){
+  if (!stream || !video.videoWidth || verifying || waitingElevage) return;
+  const W = video.videoWidth, H = video.videoHeight, c = document.createElement('canvas'); c.width = W; c.height = H;
+  c.getContext('2d', {willReadFrequently: true}).drawImage(video, 0, 0);
+  const r = autoZones(toGray(c), detectCards);
+  const msg = [];
+  if (r.list){ crop = r.list; $('cropState').textContent = `Zone liste : ${crop.w} × ${crop.h} px (auto, ${r.nCards} montures visibles).`; frameByLabels(c, r.list, r.nCards); }
+  else msg.push('liste non trouvée');
+  if (r.cnt){ cropCnt = r.cnt; $('cropCntState').textContent = `Zone compteurs : ${cropCnt.w} × ${cropCnt.h} px (auto).`; $('btnCnt').disabled = false; }
+  else msg.push('panneau FILTRES non trouvé');
+  let txt = msg.length ? `Détection incomplète (${msg.join(', ')}) : agrandis la fenêtre Dofus si elle est petite, relance la détection, ou trace la zone à la main.` : 'Zones détectées. Vérifie les rectangles sur l’aperçu.';
+  if (r.list && r.list.w < 250) txt += ' Attention : la liste est petite à l’écran, la lecture des noms sera moins fiable. Agrandis la fenêtre Dofus si tu peux.';
+  // liste filtrée (peu de montures) : la hauteur mesurée est trop courte pour la liste complète ; on remesure dès qu'elle s'allonge
+  shortList = !!(r.list && r.nCards < 6);
+  if (r.list && r.nCards < 6){ txt += ' Liste courte (un filtre est coché ?) : décoche les filtres (RÉINITIALISER) ; la zone sera remesurée automatiquement et le parcours guidé débloqué.';
+    clearTimeout(runAutoZones.t); runAutoZones.t = setTimeout(() => { if (!recTimer && !cntOn && !guided) runAutoZones(); }, 2000); }
+  $('autoState').textContent = txt;
+  $('autoState').className = msg.length || (r.list && r.list.w < 250) ? 'hint warn' : 'hint ok';
+  guideReady();
+}
+$('btnAuto').onclick = runAutoZones;
+let shortList = false;
+function guideReady(){ $('btnGuide').disabled = !(stream && crop && cropCnt) || verifying || waitingElevage || shortList; }
+prev.addEventListener('pointerup', () => {
+  if (!drag) return; const r = rectFrom(drag); drag = null;
+  const z = (r.w > 20 && r.h > 20) ? {x:Math.round(r.x), y:Math.round(r.y), w:Math.round(r.w), h:Math.round(r.h)} : null;
+  if (document.querySelector('input[name=zone]:checked').value === 'compteurs'){
+    cropCnt = z; setTimeout(guideReady); $('cropCntState').textContent = z ? `Zone compteurs : ${z.w} × ${z.h} px.` : 'Zone compteurs : non tracée.';
+    $('btnCnt').disabled = !(stream && cropCnt);
+  } else {
+    crop = z; setTimeout(guideReady); $('cropState').textContent = z ? `Zone liste : ${z.w} × ${z.h} px.` : 'Zone liste : fenêtre entière.';
+  }
+});
+
+// Enregistrement : une image toutes les 400 ms, gardée si elle a changé
+function grab(src = video, W = video.videoWidth, H = video.videoHeight){
+  const r = crop || {x:0, y:0, w:W, h:H};
+  const c = document.createElement('canvas'); c.width = r.w; c.height = r.h;
+  c.getContext('2d', {willReadFrequently: true}).drawImage(src, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
+  return c;
+}
+function signature(c){
+  const s = document.createElement('canvas'); s.width = 48; s.height = 48;
+  const x = s.getContext('2d'); x.drawImage(c, 0, 0, 48, 48);
+  const d = x.getImageData(0, 0, 48, 48).data, g = new Float32Array(48*48);
+  for (let i = 0; i < g.length; i++) g[i] = (d[i*4]+d[i*4+1]+d[i*4+2])/3;
+  return g;
+}
+function diff(a, b){ let s = 0; for (let i = 0; i < a.length; i++) s += Math.abs(a[i]-b[i]); return s/a.length; }
+
+// Enregistrement en direct : chaque image du flux est découpée en cartes et alignée tout de suite
+let aligner = null, reader = null, pip = null, audioCtx = null, procTrack = null;
+function beep(){
+  try { const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.frequency.value = 880; g.gain.value = 0.15; o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + 0.18); } catch (e) {}
+}
+function setStatus(state, text){
+  $('speed').textContent = text; $('speed').className = state === 'bad' ? 'bad' : state === 'ok' ? 'ok' : 'hint';
+  $('recStats').textContent = `Images analysées : ${analysed} · montures captées : ${aligner.cards.size} · montures sautées : ${aligner.missing().length}${aligner.lost ? ' · position perdue, remonte' : ''}`;
+  if (pip && !pip.closed){
+    const d = pip.document;
+    d.body.style.background = state === 'bad' ? '#7a1f1a' : state === 'ok' ? '#1f4d2a' : '#222';
+    d.getElementById('n').textContent = aligner.cards.size;
+    d.getElementById('t').textContent = state === 'bad' ? (text.startsWith('Rectangle') ? text : `Trop vite ! Remonte un peu (${aligner.gaps})`) : state === 'ok' ? 'Vitesse correcte' : text;
+  }
+}
+let lastBad = 0, knownCardH = 0;
+// copie d'une carte complète la première fois qu'on la voit
+function keepCard(c, k){
+  const h = c.y1 - c.y0, cv = document.createElement('canvas'); cv.width = c.src.width; cv.height = h;
+  cv.getContext('2d').drawImage(c.src, 0, c.y0, c.src.width, h, 0, 0, c.src.width, h);
+  return {k, img: cv};
+}
+function processFrame(src, W, H){
+  if (!recTimer || !W) return;
+  const c = grab(src, W, H); analysed++;
+  const img = toGray(c);
+  const det = detectCards(img, knownCardH);
+  if (!knownCardH && det.cards.length >= 5) knownCardH = det.cardH;    // mémorisée pour les listes courtes (reproducteurs)
+  const first = aligner.cards.size === 0;
+  if (first && det.cutTop && crop && crop.y > 0){
+    // liste en haut mais 1re carte coupée par le rectangle : on l'agrandit vers le haut et on repart, sans rien perdre
+    const add = Math.min(crop.y, Math.max(4, det.cardH - det.cutTopH + 4));
+    crop = {x: crop.x, y: crop.y - add, w: crop.w, h: crop.h + add};
+    $('cropState').textContent = `Zone liste : ${crop.w} × ${crop.h} px (agrandie vers le haut pour la 1re monture).`;
+    aligner = new ShiftAligner(); return;
+  }
+  const S = det.cards.map(([y0, y1]) => ({y0, y1, sig: cardSig(img, y0, y1), src: c}));
+  const st = aligner.add(img, S, keepCard);
+  if (st === 'gap'){ if (performance.now() - lastBad > 1200) beep(); lastBad = performance.now(); setStatus('bad', aligner.lost ? 'Trop vite : position perdue. Remonte jusqu’aux dernières montures capturées, l’outil reprendra tout seul.' : `Des montures ont été sautées (${aligner.missing().length}). Remonte un peu et redescends plus lentement.`); }
+  else if (st === 'ok' && performance.now() - lastBad > 1500) setStatus('ok', 'Vitesse correcte.');
+  else setStatus(performance.now() - lastBad > 1500 ? 'ok' : 'bad', $('speed').textContent);
+}
+async function openPip(){
+  if (!('documentPictureInPicture' in window)) return;
+  try {
+    pip = await documentPictureInPicture.requestWindow({width: 230, height: 120});
+    pip.document.body.innerHTML = '<div style="font:600 13px system-ui;color:#fff;padding:10px;display:flex;flex-direction:column;gap:4px"><div>Montures captées</div><div id="n" style="font:700 34px system-ui">0</div><div id="t">Fais défiler l’étable</div></div>';
+    pip.document.body.style.cssText = 'margin:0;background:#222';
+  } catch (e) { pip = null; }
+}
+async function startLoop(){
+  const track = stream.getVideoTracks()[0];
+  if ('MediaStreamTrackProcessor' in window){
+    // lit le flux directement : pas ralenti quand la page est cachée derrière Dofus
+    procTrack = track.clone();
+    reader = new MediaStreamTrackProcessor({track: procTrack}).readable.getReader();
+    while (recTimer){
+      const {value: frame, done} = await reader.read(); if (done) break;
+      try { processFrame(frame, frame.displayWidth, frame.displayHeight); } finally { frame.close(); }
+    }
+    try { reader.cancel(); } catch (e) {}
+    if (procTrack){ procTrack.stop(); procTrack = null; }
+  } else {
+    const tick = () => { if (!recTimer) return; processFrame(video, video.videoWidth, video.videoHeight); setTimeout(tick, 33); };
+    tick();
+  }
+}
+$('btnRec').onclick = async () => {
+  aligner = new ShiftAligner(); analysed = 0; lastBad = 0; $('thumbs').innerHTML = '';
+  try { audioCtx = audioCtx || new AudioContext(); audioCtx.resume(); } catch (e) {}
+  $('btnRec').disabled = true; $('btnStopRec').disabled = false; $('btnProc').disabled = true; $('btnReset').disabled = false;
+  if (!guided) await openPip();
+  recTimer = true; setStatus('wait', 'Fais défiler l’étable.');
+  startLoop();
+};
+// Recommencer : efface la capture et les planches, garde le partage et la zone tracée
+$('btnReset').onclick = () => {
+  if (recTimer) stopRec();
+  aligner = null; analysed = 0; lastBad = 0; cntShots = []; cntSig = null; $('cntThumbs').innerHTML = ''; $('cntStats').textContent = 'Vues gardées : 0';
+  $('sheets').querySelectorAll('a').forEach(a => { if (a.href.startsWith('blob:')) URL.revokeObjectURL(a.href); });
+  $('sheets').innerHTML = ''; $('sheetsHint').hidden = true; $('procStats').textContent = '';
+  $('recStats').textContent = 'Images analysées : 0 · montures captées : 0';
+  $('speed').textContent = 'Vitesse : en attente.'; $('speed').className = 'hint';
+  $('btnProc').disabled = true; $('btnReset').disabled = true; $('btnRec').disabled = !stream;
+};
+// Capture des compteurs (panneau FILTRES)
+let cntOn = false, cntShots = [], cntSig = null;
+function grabRect(src, r){ const c = document.createElement('canvas'); c.width = r.w; c.height = r.h;
+  c.getContext('2d').drawImage(src, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h); return c; }
+$('btnCnt').onclick = async () => {
+  cntOn = true; cntShots = []; cntSig = null; $('cntThumbs').innerHTML = '';
+  $('btnCnt').disabled = true; $('btnCntStop').disabled = false;
+  const track = stream.getVideoTracks()[0].clone(); let lastProf = null, tick = 0, latest = null;
+  const keep = (c, sg) => {
+    cntShots.push(c); cntSig = sg; lastProf = rowProfile(c, 16);
+    const t = document.createElement('canvas'); t.height = 110; t.width = Math.round(110 * c.width / c.height);
+    t.getContext('2d').drawImage(c, 0, 0, t.width, t.height); $('cntThumbs').appendChild(t);
+    $('cntStats').textContent = `Vues gardées : ${cntShots.length}`;
+    if (guided && pip && !pip.closed){ pip.document.getElementById('n').textContent = cntShots.length; }
+  };
+  // garde une vue dès que le panneau a défilé d'environ un tiers de sa hauteur depuis la dernière vue gardée
+  const consider = (src) => {
+    if (tick++ % 3) return;
+    const c = grabRect(src, cropCnt), sg = signature(c); latest = {c, sg};
+    if (!cntSig){ keep(c, sg); latest = null; return; }
+    if (diff(sg, cntSig) < 0.5) return;                       // rien n'a bougé
+    const r = findShift(lastProf, rowProfile(c, 16), c.height, 16);
+    if (r.s > c.height * 0.33 || r.err > 10){ keep(c, sg); latest = null; }     // assez défilé, ou changement non mesurable (section dépliée, remontée)
+  };
+  if ('MediaStreamTrackProcessor' in window){
+    const rd = new MediaStreamTrackProcessor({track}).readable.getReader();
+    while (cntOn){ const {value: f, done} = await rd.read(); if (done) break; try { consider(f); } finally { f.close(); } }
+    try { rd.cancel(); } catch (e) {}
+  } else {
+    while (cntOn){ consider(video); await new Promise(r => setTimeout(r, 33)); }
+  }
+  if (latest && cntSig && diff(latest.sg, cntSig) > 0.5) keep(latest.c, latest.sg);   // bas du panneau
+  track.stop();
+};
+$('btnCntStop').onclick = () => { cntOn = false; $('btnCnt').disabled = !(stream && cropCnt); $('btnCntStop').disabled = true; $('btnProc').disabled = !aligner && !cntShots.length ? true : $('btnProc').disabled; };
+// ---------- Parcours guidé ----------
+let guided = false, gStep = 0, gRunning = false;
+const G = {cnt: [], males: null, femelles: null, repro: null, suc: []};
+const STEPS = [
+  {key: 'cnt', title: 'Étape 1/5 · Compteurs', label: 'Vues gardées',
+   text: 'Clique sur Dofus pour le remettre au premier plan. Dans FILTRES, ne coche rien et déplie Génération, Sexe et Couleurs. Clique Démarrer, puis fais défiler tout le panneau FILTRES doucement.'},
+  {key: 'males', title: 'Étape 2/5 · Mâles', label: 'Montures captées',
+   text: 'Coche « Monture mâle » dans FILTRES et remonte la liste tout en haut. Clique Démarrer, puis fais glisser la barre jusqu’en bas.'},
+  {key: 'femelles', title: 'Étape 3/5 · Femelles', label: 'Montures captées',
+   text: 'Décoche « Monture mâle », coche « Monture femelle » et remonte la liste en haut. Clique Démarrer, puis fais glisser la barre jusqu’en bas.'},
+  {key: 'repro', title: 'Étape 4/5 · Reproducteurs', label: 'Montures captées',
+   text: 'Décoche « Monture femelle ». En bas du panneau FILTRES, section CAPACITÉS, coche « Reproducteur » et remonte la liste en haut. Clique Démarrer, puis fais glisser la barre jusqu’en bas (s’il y en a peu, attends juste 2 secondes).'},
+  {key: 'suc', title: 'Étape 5/5 · Succès Gen 10', label: 'Vues prises',
+   text: 'Ferme l’Élevage. Ouvre les Succès › Élevage › Muldos et clique sur « Muldo : Dixième génération » pour voir ses objectifs, liste en haut. Clique « Prendre une vue », fais défiler d’un écran, et recommence jusqu’à la dernière ligne (Aigue-marine et Prune).'},
+];
+function gRender(){
+  if (!pip || pip.closed) return;
+  const d = pip.document, st = STEPS[gStep];
+  d.body.style.background = '#222';
+  d.body.innerHTML = `<div style="font:13px system-ui;color:#fff;padding:10px;display:flex;flex-direction:column;gap:6px">
+    <div style="font-weight:700;color:#ffd166">${st.title}</div>
+    <div style="line-height:1.35">${st.text}</div>
+    <div style="display:flex;align-items:baseline;gap:8px"><span id="n" style="font:700 30px system-ui">0</span><span style="opacity:.8">${st.label}</span></div>
+    <div id="t" style="min-height:1.2em;opacity:.9">Prêt.</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button id="go" style="font:600 13px system-ui;padding:6px 10px">${st.key === 'suc' ? 'Prendre une vue' : 'Démarrer'}</button>
+      <button id="next" disabled style="font:600 13px system-ui;padding:6px 10px">${gStep === STEPS.length - 1 ? 'Terminer' : 'Étape suivante'}</button>
+      <button id="redo" disabled style="font:13px system-ui;padding:6px 10px">Refaire l’étape</button>
+    </div></div>`;
+  d.getElementById('go').onclick = gStart; d.getElementById('next').onclick = gNext; d.getElementById('redo').onclick = gRedo;
+}
+// une image de la fenêtre Dofus entière, lue directement dans le flux (fiable même si la page est cachée)
+async function grabFullFrame(){
+  if ('MediaStreamTrackProcessor' in window){
+    const t = stream.getVideoTracks()[0].clone(), rd = new MediaStreamTrackProcessor({track: t}).readable.getReader();
+    const {value: f} = await rd.read(); const c = document.createElement('canvas'); c.width = f.displayWidth; c.height = f.displayHeight;
+    c.getContext('2d').drawImage(f, 0, 0); f.close(); try { rd.cancel(); } catch (e) {} t.stop(); return c;
+  }
+  const c = document.createElement('canvas'); c.width = video.videoWidth; c.height = video.videoHeight; c.getContext('2d').drawImage(video, 0, 0); return c;
+}
+async function gShot(){
+  const d = pip.document; d.getElementById('go').disabled = true;
+  const c = await grabFullFrame(); G.suc.push(c); beep();
+  d.getElementById('n').textContent = G.suc.length; d.getElementById('t').textContent = 'Vue prise. Fais défiler, puis reprends une vue.';
+  d.getElementById('go').disabled = false; d.getElementById('next').disabled = false; d.getElementById('redo').disabled = false;
+}
+function gStart(){
+  const st = STEPS[gStep], d = pip.document;
+  if (st.key === 'suc'){ gShot(); return; }
+  gRunning = true;
+  d.getElementById('go').disabled = true; d.getElementById('next').disabled = false; d.getElementById('redo').disabled = false;
+  if (st.key === 'cnt'){ cntShots = []; $('btnCnt').onclick(); d.getElementById('t').textContent = 'Fais défiler le panneau FILTRES…'; }
+  else { if (st.key === 'males' || st.key === 'femelles') $('sexe').value = st.key; $('btnRec').onclick(); }
+}
+function gStopCurrent(save){
+  const st = STEPS[gStep];
+  if (st.key === 'suc'){ if (!save) G.suc = []; gRunning = false; return; }
+  if (st.key === 'cnt'){ $('btnCntStop').onclick(); if (save) G.cnt = cntShots; }   // même tableau : la dernière vue, ajoutée à l'arrêt, y figure
+  else { stopRec(); if (save && aligner) G[st.key] = {list: aligner.list, gaps: aligner.missing().length + (aligner.lost ? 1 : 0)}; }
+  gRunning = false;
+}
+function gRedo(){ if (gRunning || STEPS[gStep].key === 'suc') gStopCurrent(false); gRender(); }
+function gNext(){
+  gStopCurrent(true);
+  if (gStep < STEPS.length - 1){ gStep++; gRender(); } else gFinish();
+}
+function sheetsFor(list, tagTxt, color){
+  const per = 40, lab = 34, head = 24, out = [];
+  for (let p = 0; p * per < list.length; p++){
+    const part = list.slice(p * per, (p + 1) * per), W = part[0].img.width;
+    const sh = document.createElement('canvas'); sh.width = W + lab; sh.height = head + part.reduce((s, c) => s + c.img.height + 4, 0);
+    const x = sh.getContext('2d'); x.fillStyle = '#111'; x.fillRect(0, 0, sh.width, sh.height);
+    x.fillStyle = color; x.font = 'bold 16px sans-serif'; x.textBaseline = 'middle'; x.fillText(`${tagTxt} · planche ${p+1}`, 6, 12);
+    let y = head;
+    part.forEach((c, i) => { const h = c.img.height; x.drawImage(c.img, lab, y);
+      x.fillStyle = c.gapBefore ? '#e0a24a' : '#cfd6cb'; x.font = 'bold 13px sans-serif'; x.fillText(String(p * per + i + 1), 3, y + h / 2); y += h + 4; });
+    out.push(sh);
+  }
+  return out;
+}
+function gFinish(){
+  const pages = [];
+  G.cnt.forEach((c, i) => { const sh = document.createElement('canvas'); sh.width = c.width; sh.height = c.height + 24;
+    const x = sh.getContext('2d'); x.fillStyle = '#111'; x.fillRect(0, 0, sh.width, sh.height);
+    x.fillStyle = '#ff9f3a'; x.font = 'bold 16px sans-serif'; x.textBaseline = 'middle'; x.fillText(`COMPTEURS · vue ${i+1}`, 6, 12);
+    x.drawImage(c, 0, 24); pages.push(sh); });
+  G.suc.forEach((c, i) => { const sh = document.createElement('canvas'); sh.width = c.width; sh.height = c.height + 30;
+    const x = sh.getContext('2d'); x.fillStyle = '#111'; x.fillRect(0, 0, sh.width, sh.height);
+    x.fillStyle = '#ffd166'; x.font = 'bold 20px sans-serif'; x.textBaseline = 'middle'; x.fillText(`SUCCÈS « Muldo : Dixième génération » · vue ${i+1}`, 8, 15);
+    x.drawImage(c, 0, 30); pages.push(sh); });
+  const m = G.males ? G.males.list : [], f = G.femelles ? G.femelles.list : [];
+  if (m.length) pages.push(...sheetsFor(m, 'MÂLES', '#4aa3ff'));
+  if (f.length) pages.push(...sheetsFor(f, 'FEMELLES', '#ff6fa8'));
+  const rp = G.repro ? G.repro.list : [];
+  if (rp.length) pages.push(...sheetsFor(rp, 'REPRODUCTEURS', '#7ee081'));
+  const url = URL.createObjectURL(makePdf(pages)), name = 'etable-complete.pdf';
+  const gaps = (G.males?.gaps || 0) + (G.femelles?.gaps || 0) + (G.repro?.gaps || 0);
+  const resume = `${m.length} mâles + ${f.length} femelles = ${m.length + f.length} montures · ${rp.length} reproducteurs · ${G.cnt.length} vues de compteurs · ${G.suc.length} vues de succès · ${gaps} monture(s) sautée(s) ou raccord(s) perdu(s)`;
+  const a = document.createElement('a'); a.href = url; a.download = name; a.innerHTML = '<button type="button" class="primary">Télécharger le PDF complet</button>';
+  $('guideOut').innerHTML = ''; $('guideOut').appendChild(a); $('guideState').textContent = resume;
+  if (pip && !pip.closed){
+    const d = pip.document; d.body.style.background = gaps ? '#5a3a10' : '#1f4d2a';
+    d.body.innerHTML = `<div style="font:13px system-ui;color:#fff;padding:10px;display:flex;flex-direction:column;gap:8px">
+      <div style="font-weight:700;color:#ffd166">Terminé</div><div>${resume}</div>
+      <button id="dl" style="font:600 13px system-ui;padding:6px 10px">Télécharger le PDF</button>
+      <div style="opacity:.8">Le lien est aussi sur la page de l’outil.</div></div>`;
+    d.getElementById('dl').onclick = () => a.click();
+  }
+  guided = false;
+}
+$('btnGuide').onclick = async () => {
+  try { audioCtx = audioCtx || new AudioContext(); audioCtx.resume(); } catch (e) {}
+  G.cnt = []; G.males = null; G.femelles = null; G.repro = null; G.suc = []; gStep = 0; guided = true; $('guideOut').innerHTML = ''; $('guideState').textContent = '';
+  if (!('documentPictureInPicture' in window)){ $('guideState').textContent = 'Ton navigateur ne permet pas la fenêtre flottante : utilise Chrome ou Edge récent.'; guided = false; return; }
+  try { pip = await documentPictureInPicture.requestWindow({width: 320, height: 250}); }
+  catch (e) { $('guideState').textContent = 'La fenêtre flottante n’a pas pu s’ouvrir.'; guided = false; return; }
+  pip.addEventListener('pagehide', () => { if (guided){ if (gRunning) gStopCurrent(false); guided = false; $('guideState').textContent = 'Parcours interrompu (fenêtre fermée).'; } });
+  gRender();
+};
+// Étape 0 : partager Dofus depuis la fenêtre flottante ; Dofus passe au premier plan, la fenêtre flottante reste par-dessus
+function gRenderShare(msg){
+  const d = pip.document; d.body.style.background = '#222';
+  d.body.innerHTML = `<div style="font:13px system-ui;color:#fff;padding:10px;display:flex;flex-direction:column;gap:8px">
+    <div style="font-weight:700;color:#ffd166">Étape 0 · Partager Dofus</div>
+    <div style="line-height:1.35">Ouvre l’Élevage dans Dofus (liste des montures visible), puis clique ci-dessous et choisis la fenêtre du jeu. Dofus passera au premier plan.</div>
+    <div id="t" style="min-height:1.2em;opacity:.9">${msg || ''}</div>
+    <button id="sh" style="font:600 13px system-ui;padding:6px 10px">Partager la fenêtre Dofus</button></div>`;
+  d.getElementById('sh').onclick = async () => {
+    let ok = false;
+    try { ok = await startShare(pip.navigator.mediaDevices, true); } catch (e) { ok = false; }
+    if (!ok){ gRenderShare('Partage impossible ou refusé. ' + ($('shareState').textContent || '') + ' Tu peux aussi partager depuis la page (bouton « Partager une fenêtre »).'); return; }
+    gWaitZones(0);
+  };
+}
+// attend la reconnaissance de la fenêtre et la détection des zones avant l'étape 1
+function gWaitZones(n){
+  if (!pip || pip.closed) return;
+  if (stream && !verifying && crop && cropCnt){ gRender(); return; }
+  if (!stream){ gRenderShare('Partage arrêté. Recommence.'); return; }
+  const t = pip.document.getElementById('t');
+  if (t) t.textContent = verifying ? 'Vérification de la fenêtre…' : 'Détection des zones…';
+  if (!verifying && n % 3 === 2) runAutoZones();
+  if (n > 40){ gRenderShare('Zones non trouvées : vérifie que l’Élevage est ouvert et la fenêtre Dofus assez grande, puis recommence.'); return; }
+  setTimeout(() => gWaitZones(n + 1), 700);
+}
+$('btnStopRec').onclick = stopRec;
+function stopRec(){
+  recTimer = null; if (!guided){ if (pip && !pip.closed) pip.close(); pip = null; }
+  $('btnStopRec').disabled = true; $('btnRec').disabled = !stream; $('btnProc').disabled = !aligner || aligner.cards.size === 0;
+}
+
+// Recollage par l'image : mesure du défilement entre deux captures
+function rowProfile(c, cols){
+  const s = document.createElement('canvas'); s.width = cols; s.height = c.height;
+  const x = s.getContext('2d'); x.drawImage(c, 0, 0, cols, c.height);
+  const d = x.getImageData(0, 0, cols, c.height).data, g = new Float32Array(cols * c.height);
+  for (let i = 0; i < g.length; i++) g[i] = (d[i*4] + d[i*4+1] + d[i*4+2]) / 3;
+  return g;
+}
+// Renvoie le décalage vertical (en px) de B par rapport à A, et l'erreur moyenne
+function findShift(A, B, H, cols){
+  const minOverlap = Math.max(8, Math.floor(H * 0.1)); let best = {s: 0, err: Infinity};
+  for (let s = 0; s <= H - minOverlap; s++){
+    let e = 0; const n = (H - s) * cols;
+    for (let r = 0; r < H - s; r++){ const a = (r + s) * cols, b = r * cols;
+      for (let k = 0; k < cols; k++) e += Math.abs(A[a+k] - B[b+k]); }
+    e /= n; if (e < best.err - 0.05) best = {s, err: e};
+  }
+  return best;
+}
+function stitchImages(fr){
+  const cols = 32, H = fr[0].height, W = fr[0].width, parts = [{c: fr[0], from: 0}];
+  let total = H, gaps = 0, prof = rowProfile(fr[0], cols);
+  for (let i = 1; i < fr.length; i++){
+    const p = rowProfile(fr[i], cols), r = findShift(prof, p, H, cols);
+    if (r.err > 10 || r.s > H * 0.85) gaps++;                 // pas de chevauchement fiable
+    if (r.s > 0){ parts.push({c: fr[i], from: H - r.s}); total += r.s; }
+    prof = p;
+  }
+  const tall = document.createElement('canvas'); tall.width = W; tall.height = total;
+  const t = tall.getContext('2d'); let y = 0;
+  parts.forEach(({c, from}) => { t.drawImage(c, 0, from, W, H - from, 0, y, W, H - from); y += H - from; });
+  return {tall, gaps};
+}
+// Cœur de l'algorithme v3 — fonctions pures sur des images en niveaux de gris
+// img = {w, h, g: Float32Array(w*h)}
+
+// Détecte les cartes complètes (bandes claires séparées par des bandes sombres)
+// Seuil réglé sur la médiane (liste pleine, comportement d'origine) ; si la liste est courte (ex. 5 reproducteurs),
+// la médiane tombe sur le fond vide : on essaie aussi le 80e centile et on garde le résultat qui trouve le plus de cartes
+function detectCards(img, knownH){
+  const a = detectCardsAt(img, knownH, 0.5);
+  if (a.cards.length >= 6) return a;
+  const b = detectCardsAt(img, knownH, 0.8);
+  return b.cards.length > a.cards.length ? b : a;
+}
+function detectCardsAt(img, knownH, pHi){
+  const {w, h, g} = img, x0 = Math.floor(w*0.03), x1 = Math.floor(w*0.97);
+  // par ligne : 25e centile de la luminosité, qui suit le fond de carte et ignore texte et icônes
+  const prof = new Float32Array(h), N = 64, tmp = new Float32Array(N);
+  for (let y = 0; y < h; y++){
+    for (let i = 0; i < N; i++) tmp[i] = g[y*w + x0 + Math.floor((x1-x0)*i/N)];
+    tmp.sort(); prof[y] = tmp[Math.floor(N*0.25)];
+  }
+  const sorted = Array.from(prof).sort((a,b)=>a-b);
+  const lo = sorted[Math.floor(h*0.05)], hi = sorted[Math.floor(h*pHi)], th = lo + (hi-lo)*0.5;
+  const runs = []; let start = -1;
+  for (let y = 0; y <= h; y++){
+    const on = y < h && prof[y] > th;
+    if (on && start < 0) start = y;
+    if (!on && start >= 0){ runs.push([start, y]); start = -1; }
+  }
+  // fusionne les micro-coupures internes (texte sombre, icônes)
+  const merged = [];
+  for (const r of runs){ const last = merged[merged.length-1];
+    if (last && r[0] - last[1] <= 2) last[1] = r[1]; else merged.push(r.slice()); }
+  const lens = merged.map(r => r[1]-r[0]).filter(l => l > 6).sort((a,b)=>a-b);
+  if (!lens.length) return {cards: [], cardH: 0};
+  const cardH = knownH || lens[Math.floor(lens.length*0.6)];
+  // une vraie carte a du contenu (icône, texte) : une bande unie (fond de liste vide) est refusée
+  const textured = (y0, y1) => { let m = 0, m2 = 0, n = 0;
+    for (let y = y0 + 2; y < y1 - 2; y += 2) for (let x = Math.floor(w*0.05); x < w*0.6; x += 3){ const v = g[y*w + x]; m += v; m2 += v*v; n++; }
+    if (!n) return false; m /= n; return Math.sqrt(Math.max(0, m2/n - m*m)) > 10; };
+  const cards = merged.filter(r => r[0] >= 0 && r[1] <= h && Math.abs((r[1]-r[0]) - cardH) <= Math.max(2, cardH*0.12) && textured(r[0], r[1]));
+  const cutTop = merged.length && merged[0][0] === 0 && (merged[0][1] - merged[0][0]) < cardH * 0.88 && textured(merged[0][0], merged[0][1] + 2);
+  return {cards, cardH, cutTop, cutTopH: merged.length ? merged[0][1] - merged[0][0] : 0};
+}
+
+// Signature normalisée d'une carte (robuste au survol qui éclaircit le fond)
+const SW = 64, SH = 8;
+function cardSig(img, y0, y1){
+  const {w, g} = img, v = new Float32Array(SW*SH), x0 = Math.floor(w*0.02), x1 = Math.floor(w*0.62);
+  for (let j = 0; j < SH; j++) for (let i = 0; i < SW; i++){
+    const ya = y0 + Math.floor((y1-y0)*j/SH), yb = y0 + Math.floor((y1-y0)*(j+1)/SH);
+    const xa = x0 + Math.floor((x1-x0)*i/SW), xb = x0 + Math.floor((x1-x0)*(i+1)/SW);
+    let s = 0, n = 0; for (let y = ya; y < Math.max(yb, ya+1); y++) for (let x = xa; x < Math.max(xb, xa+1); x++){ s += g[y*w+x]; n++; }
+    v[j*SW+i] = s/n;
+  }
+  let m = 0; for (const a of v) m += a; m /= v.length;
+  let sd = 0; for (const a of v) sd += (a-m)**2; sd = Math.sqrt(sd/v.length) || 1;
+  for (let k = 0; k < v.length; k++) v[k] = (v[k]-m)/sd;
+  return v;
+}
+function sigDist(a, b){ let s = 0; for (let k = 0; k < a.length; k++) s += Math.abs(a[k]-b[k]); return s/a.length; }
+
+// Aligne la suite de cartes de chaque image sur la liste accumulée
+// Alignement par mesure du défilement (au pixel près), indépendant de l'apparence des cartes
+const PCOLS = 24;
+function profileOf(img){
+  const {w, h, g} = img, out = new Float32Array(h * PCOLS);
+  for (let y = 0; y < h; y++){
+    for (let k = 0; k < PCOLS; k++){
+      const x0 = Math.floor(w * k / PCOLS), x1 = Math.floor(w * (k + 1) / PCOLS); let s = 0;
+      for (let x = x0; x < x1; x++) s += g[y*w + x];
+      out[y*PCOLS + k] = s / (x1 - x0);
+    }
+  }
+  return out;
+}
+// s > 0 : le contenu est monté de s pixels (défilement vers le bas). Erreur = médiane robuste approchée (moyenne des écarts tronqués)
+function shiftError(A, B, h, s){
+  const y0 = Math.max(0, -s), y1 = Math.min(h, h - s); let e = 0, n = 0;
+  for (let y = y0; y < y1; y += 2){ const a = (y + s) * PCOLS, b = y * PCOLS;
+    // décalage de luminosité de la ligne retiré : une carte survolée (surbrillance) s'éclaircit d'un bloc
+    let off = 0; for (let k = 0; k < PCOLS; k++) off += A[a+k] - B[b+k]; off /= PCOLS;
+    for (let k = 0; k < PCOLS; k++){ e += Math.min(40, Math.abs(A[a+k] - B[b+k] - off)); n++; } }
+  return n ? e / n : 1e9;
+}
+// métrique fine : part des points nettement différents (texte), insensible au bruit et au léger éclaircissement du survol
+function fineError(imgA, imgB, s, tol){
+  // tol : un pixel compte comme bon s'il correspond à ±1 ligne près. Sur certains écrans (Windows à 125 %…) les cartes ne
+  // défilent pas d'un bloc : chacune est arrondie au pixel près de son côté, d'où des décalages d'1 px entre cartes.
+  const {w, h} = imgB, A = imgA.g, B = imgB.g, y0 = Math.max(tol ? 1 : 0, -s + (tol ? 1 : 0)), y1 = Math.min(h - (tol ? 1 : 0), h - s - (tol ? 1 : 0));
+  let bad = 0, n = 0;
+  for (let y = y0; y < y1; y += 2){ const a = (y + s) * w, b = y * w;
+    // surbrillance au survol de la souris : même éclaircissement sur toute la ligne de la carte, on le retire
+    let off = 0, m = 0; for (let x = 0; x < w; x += 6){ const d = A[a+x] - B[b+x]; if (d > -60 && d < 60){ off += d; m++; } } off = m ? off / m : 0;
+    for (let x = 0; x < w; x += 3){ const t = B[b+x] + off;
+      if (Math.abs(A[a+x] - t) > 25 && (!tol || (Math.abs(A[a-w+x] - t) > 25 && Math.abs(A[a+w+x] - t) > 25))) bad++; n++; } }
+  return n ? bad / n : 1;
+}
+function estimateShift(A, B, h, guess, imgA, imgB, win){
+  const maxS = Math.floor(h * 0.7), cand = [];
+  // la fenêtre couvre toujours l'arrêt et le retour en arrière, pas seulement la vitesse actuelle
+  const lo = win ? Math.max(-maxS, Math.min(0, guess) - win) : -maxS, hi = win ? Math.min(maxS, Math.max(0, guess) + win) : maxS;
+  // 1) présélection rapide sur les profils : minima locaux (dont les « faux » décalages d'une carte entière)
+  const errs = new Map(); const E = (s) => { if (!errs.has(s)) errs.set(s, shiftError(A, B, h, s)); return errs.get(s); };
+  for (let s = lo; s <= hi; s += 1) E(s);
+  for (let s = lo + 1; s < hi; s++) if (E(s) <= E(s-1) && E(s) <= E(s+1)) cand.push(s);
+  cand.sort((p, q) => E(p) - E(q));
+  // 2) départage sur l'image complète entre les meilleurs candidats ; la continuité du mouvement tranche les ex æquo
+  let best = null;
+  for (const s of cand.slice(0, 16)){
+    const f = fineError(imgA, imgB, s, true), score = f + Math.abs(s - guess) * 0.00001;
+    if (!best || score < best.score) best = {s, err: f, score};
+  }
+  if (!best) return {s: 0, err: 1};
+  // la tolérance de ±1 ligne rend les décalages voisins presque équivalents : on fixe le décalage exact sans tolérance
+  let sx = best.s, ex = Infinity;
+  for (const s of [best.s - 1, best.s, best.s + 1]){ if (Math.abs(s) > maxS) continue; const f = fineError(imgA, imgB, s, false) + Math.abs(s - best.s) * 0.00001; if (f < ex){ ex = f; sx = s; } }
+  return {s: sx, err: best.err};
+}
+class ShiftAligner {
+  constructor(){ this.offset = 0; this.prev = null; this.prevImg = null; this.v = 0; this.cards = new Map(); this.anchor = null; this.pitch = 0;
+    this.gaps = 0; this.skipped = 0; this.fails = 0; this.maxSeen = -Infinity; this.minSeen = Infinity; }
+  get list(){ const ks = [...this.cards.keys()].sort((a, b) => a - b); return ks.map((k, i) => { const c = this.cards.get(k); c.gapBefore = i > 0 && k - ks[i-1] > 1; return c; }); }
+  missing(){ if (!this.cards.size) return []; const m = []; for (let k = this.minSeen; k <= this.maxSeen; k++) if (!this.cards.has(k)) m.push(k); return m; }
+  add(img, S, keep){
+    const prof = profileOf(img);
+    if (this.lost){
+      // raccord perdu : on attend que le joueur revienne sur la dernière position sûre, puis on reprend
+      const r = estimateShift(this.good.prof, prof, img.h, 0, this.good.img, img, 0);
+      if (r.err > 0.015) return 'gap';
+      this.lost = false; this.fails = 0; this.offset = this.good.offset + r.s; this.v = 0; this.prev = prof; this.prevImg = img;
+      return 'ok';
+    }
+    if (this.prev){
+      // fenêtre de recherche autour du dernier mouvement (couvre les faux décalages d'une carte), élargie si rien ne colle
+      let r = estimateShift(this.prev, prof, img.h, this.v, this.prevImg, img, Math.max(Math.round((this.pitch || 60) * 1.6) + 40, Math.round(img.h * 0.35)));
+      if (r.err > 0.015) r = estimateShift(this.prev, prof, img.h, this.v, this.prevImg, img, 0);
+      // seuil mesuré : vrai décalage ≤ 0,004 ; sans recouvrement ≥ 0,027
+      if (r.err > 0.015){ this.skipped++; if (++this.fails >= 8){ this.fails = 0; this.gaps++; this.lost = true; return 'gap'; } return 'skip'; }
+      this.fails = 0; this.offset += r.s; this.v = r.s;
+    }
+    this.prev = prof; this.prevImg = img; this.good = {prof, img, offset: this.offset};   // dernière position sûre
+    if (!S.length) return 'ok';
+    if (!this.pitch && S.length >= 2){ const d = []; for (let i = 1; i < S.length; i++) d.push(S[i].y0 - S[i-1].y0); d.sort((a, b) => a - b); this.pitch = d[d.length >> 1]; }
+    if (!this.pitch) return 'ok';
+    // Numéro (place) de chaque carte, compté depuis la carte déjà enregistrée la plus proche : avec un pas fractionnaire
+    // (ex. 40,7 px sous Windows à 125 %), compter depuis le tout début accumulerait l'arrondi et ferait tomber deux
+    // montures sur la même place au bout de cent cartes (perte silencieuse).
+    const pos = c => this.offset + c.y0;
+    let keys;
+    if (!this.cards.size) keys = S.map(c => Math.round((c.y0 - S[0].y0) / this.pitch));
+    else {
+      let ref = null, bdist = Infinity;
+      for (const o of this.cards.values()){ const d = Math.abs(o.pos - pos(S[0])); if (d < bdist){ bdist = d; ref = o; } }
+      const k0 = ref.k + Math.round((pos(S[0]) - ref.pos) / this.pitch);
+      keys = S.map(c => k0 + Math.round((c.y0 - S[0].y0) / this.pitch));
+    }
+    // contrôle par le contenu : les cartes déjà vues doivent ressembler à celles enregistrées sous la même place.
+    // Si elles collent mieux une place plus haut ou plus bas, on décale les numéros (sinon perte sans alerte ou fausse alerte).
+    const cost = d => { let t = 0, n = 0; S.forEach((c, i) => { const o = this.cards.get(keys[i] + d); if (o && o.sig){ t += sigDist(c.sig, o.sig); n++; } }); return n >= 2 ? t / n : null; };
+    const c0 = cost(0);
+    // mesuré : même carte ≈ 0,03 ; carte voisine ≈ 0,18
+    if (c0 !== null && c0 > 0.09){
+      let bd = 0, bc = c0; for (const d of [-1, 1, -2, 2]){ const c = cost(d); if (c !== null && c < bc * 0.4){ bd = d; bc = c; } }
+      if (bd){ keys = keys.map(k => k + bd); this.fixes = (this.fixes || 0) + 1; }
+    }
+    const before = this.missing().length;
+    S.forEach((c, i) => {
+      const k = keys[i], o = this.cards.get(k);
+      if (!o){ const kc = keep ? keep(c, k) : {k}; kc.k = k; kc.sig = c.sig; kc.pos = pos(c); this.cards.set(k, kc); }
+      else o.pos = pos(c);   // position remise à jour : pas de dérive
+      this.maxSeen = Math.max(this.maxSeen, k); this.minSeen = Math.min(this.minSeen, k);
+    });
+    const after = this.missing().length;
+    if (after > before){ this.gaps += after - before; return 'gap'; }   // des cartes ont été sautées
+    return 'ok';
+  }
+}
+
+class Aligner {
+  constructor(thr = 0.15){ this.thr = thr; this.list = []; this.pPrev = 0; this.gaps = 0; this.fails = 0; this.skipped = 0; }
+  dist(card, sig){ let m = Infinity; for (const s of card.sigs) m = Math.min(m, sigDist(s, sig)); return m; }
+  keep(c, extra){   // ne garde qu'une copie de la carte, pas toute la capture
+    const h = c.y1 - c.y0, k = document.createElement('canvas'); k.width = c.src.width; k.height = h;
+    k.getContext('2d').drawImage(c.src, 0, c.y0, c.src.width, h, 0, 0, c.src.width, h);
+    this.list.push({sigs: [c.sig], img: k, ...extra});
+  }
+  add(S){
+    const L = this.list;
+    if (!S.length) return 'empty';
+    if (!L.length){ S.forEach(c => this.keep(c)); this.pPrev = 0; return 'ok'; }
+    let best = null;
+    const aMin = Math.max(0, L.length - S.length - 40);
+    for (let a = aMin; a < L.length; a++){
+      const m = Math.min(S.length, L.length - a);
+      if (m < Math.min(2, S.length)) continue;
+      let ok = 0, err = 0;
+      for (let i = 0; i < m; i++){ const d = this.dist(L[a+i], S[i].sig); err += Math.min(d, 1); if (d < this.thr) ok++; }
+      if (ok < (m >= 4 ? Math.ceil(m * 0.6) : m)) continue;   // cartes masquées (curseur, survol) tolérées
+      const cand = {a, m, err: err/m, jump: Math.abs(a - this.pPrev)};
+      if (!best || cand.jump < best.jump || (cand.jump === best.jump && cand.err < best.err)) best = cand;
+    }
+    if (!best){
+      // image prise pendant l'animation du défilement (flou, fondu) : on l'ignore et on attend une image nette
+      this.fails++; this.skipped++;
+      if (this.fails < 8) return 'skip';
+      // l'échec dure : vrai trou dans la liste
+      this.fails = 0; this.gaps++;
+      S.forEach((c, i) => this.keep(c, i === 0 ? {gapBefore: true} : {})); this.pPrev = L.length - S.length; return 'gap';
+    }
+    this.fails = 0;
+    for (let i = 0; i < best.m; i++){ const card = L[best.a+i]; if (card.sigs.length < 6) card.sigs.push(S[i].sig); }
+    for (let i = best.m; i < S.length; i++) this.keep(S[i]);
+    this.pPrev = best.a;
+    return 'ok';
+  }
+}
+function toGray(c){
+  const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data, g = new Float32Array(c.width * c.height);
+  for (let i = 0; i < g.length; i++) g[i] = (d[i*4] + d[i*4+1] + d[i*4+2]) / 3;
+  return {w: c.width, h: c.height, g};
+}
+// Diagnostic : 60 images consécutives du flux, assemblées en une grille
+$('btnDiag').onclick = async () => {
+  $('btnDiag').disabled = true; $('dlDiag').hidden = true;
+  try { audioCtx = audioCtx || new AudioContext(); audioCtx.resume(); } catch (e) {}
+  for (let k = 5; k > 0; k--){ $('btnDiag').textContent = `Va sur Dofus… ${k}`; await new Promise(r => setTimeout(r, 1000)); }
+  beep();   // top départ : tu peux faire défiler
+  const shots = [], t0 = performance.now(), track = stream.getVideoTracks()[0].clone();
+  $('btnDiag').textContent = 'En attente du défilement…';
+  if ('MediaStreamTrackProcessor' in window){
+    const rd = new MediaStreamTrackProcessor({track}).readable.getReader();
+    // attend que la liste bouge, puis enregistre 60 images
+    let ref = null, started = false;
+    while (shots.length < 60){
+      const {value: f, done} = await rd.read(); if (done) break;
+      try {
+        const c = grab(f, f.displayWidth, f.displayHeight);
+        if (!started){
+          const sg = signature(c);
+          if (!ref) ref = sg; else if (diff(sg, ref) > 2){ started = true; $('btnDiag').textContent = 'Enregistrement…'; }
+          if (!started){ ref = sg; shots.length = 0; shots.push({c, t: 0}); continue; }
+        }
+        shots.push({c, t: Math.round(performance.now() - t0)});
+      } finally { f.close(); }
+    }
+    try { rd.cancel(); } catch (e) {}
+  } else {
+    while (shots.length < 60){ shots.push({c: grab(), t: Math.round(performance.now() - t0)}); await new Promise(r => setTimeout(r, 33)); }
+  }
+  track.stop();
+  const W = shots[0].c.width, H = shots[0].c.height, cols = 10, rows = Math.ceil(shots.length / cols), top = 18;
+  const g = document.createElement('canvas'); g.width = cols * (W + 4); g.height = rows * (H + top + 4);
+  const x = g.getContext('2d'); x.fillStyle = '#000'; x.fillRect(0, 0, g.width, g.height);
+  shots.forEach((sh, i) => {
+    const gx = (i % cols) * (W + 4), gy = Math.floor(i / cols) * (H + top + 4);
+    const n = detectCards(toGray(sh.c)).cards.length;
+    x.fillStyle = '#ff0'; x.font = 'bold 13px sans-serif'; x.fillText(`#${i} ${sh.t}ms cartes:${n}`, gx + 2, gy + 13);
+    x.drawImage(sh.c, gx, gy + top);
+  });
+  $('dlDiag').href = g.toDataURL('image/png'); $('dlDiag').hidden = false;
+  $('btnDiag').textContent = 'Diagnostic (2 s)'; $('btnDiag').disabled = false; beep(); setTimeout(beep, 250);
+};
+// Zip minimal, sans compression (les PNG sont déjà compressés)
+const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++){ let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(u8){ let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function makeZip(files){   // files : [{name, data: Uint8Array}]
+  const enc = new TextEncoder(), parts = [], central = []; let off = 0;
+  for (const f of files){
+    const name = enc.encode(f.name), crc = crc32(f.data), sz = f.data.length;
+    const h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint32(14, crc, true);
+    h.setUint32(18, sz, true); h.setUint32(22, sz, true); h.setUint16(26, name.length, true);
+    parts.push(new Uint8Array(h.buffer), name, f.data);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint32(16, crc, true);
+    c.setUint32(20, sz, true); c.setUint32(24, sz, true); c.setUint16(28, name.length, true); c.setUint32(42, off, true);
+    central.push(new Uint8Array(c.buffer), name);
+    off += 30 + name.length + sz;
+  }
+  const csize = central.reduce((s, a) => s + a.length, 0), e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true);
+  e.setUint32(12, csize, true); e.setUint32(16, off, true);
+  return new Blob([...parts, ...central, new Uint8Array(e.buffer)], {type: 'application/zip'});
+}
+const dataUrlBytes = u => { const b = atob(u.split(',')[1]), a = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) a[i] = b.charCodeAt(i); return a; };
+// PDF minimal : une planche par page, en JPEG (DCTDecode)
+function makePdf(canvases){
+  const enc = new TextEncoder(), chunks = [], offs = []; let len = 0;
+  const push = x => { const u = typeof x === 'string' ? enc.encode(x) : x; chunks.push(u); len += u.length; };
+  const obj = (n, body) => { offs[n] = len; push(`${n} 0 obj\n`); body(); push('\nendobj\n'); };
+  push('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n');
+  const n = canvases.length, kids = [];
+  for (let i = 0; i < n; i++) kids.push(`${3 + i*3} 0 R`);
+  obj(1, () => push('<< /Type /Catalog /Pages 2 0 R >>'));
+  obj(2, () => push(`<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${n} >>`));
+  canvases.forEach((c, i) => {
+    const pg = 3 + i*3, im = pg + 1, ct = pg + 2, W = c.width, H = c.height;
+    const jpg = dataUrlBytes(c.toDataURL('image/jpeg', 0.92));
+    const draw = `q ${W} 0 0 ${H} 0 0 cm /Im0 Do Q`;
+    obj(pg, () => push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /XObject << /Im0 ${im} 0 R >> >> /Contents ${ct} 0 R >>`));
+    obj(im, () => { push(`<< /Type /XObject /Subtype /Image /Width ${W} /Height ${H} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpg.length} >>\nstream\n`); push(jpg); push('\nendstream'); });
+    obj(ct, () => push(`<< /Length ${draw.length} >>\nstream\n${draw}\nendstream`));
+  });
+  const total = 3 + n*3, xref = len;
+  push(`xref\n0 ${total}\n0000000000 65535 f \n`);
+  for (let i = 1; i < total; i++) push(String(offs[i]).padStart(10, '0') + ' 00000 n \n');
+  push(`trailer\n<< /Size ${total} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`);
+  return new Blob(chunks, {type: 'application/pdf'});
+}
+$('btnProc').onclick = () => {
+  $('btnProc').disabled = true; $('sheets').innerHTML = ''; $('sheetsHint').hidden = true;
+  const list = aligner.list, gaps = aligner.missing().length, exp = +$('expected').value || 0;
+  const verdict = exp ? (list.length === exp ? ' · total conforme ✓' : ` · écart de ${list.length - exp} avec le total attendu`) : '';
+  $('procStats').innerHTML = `<span class="${gaps ? 'warn' : 'ok'}">${list.length} montures isolées · ${analysed} images analysées · ${gaps} monture(s) sautée(s)</span>${verdict}`
+    + (gaps ? '<br><span class="hint">Les numéros en orange marquent un raccord raté : les montures juste avant peuvent être en double.</span>' : '');
+  const per = 40, lab = 34, sheetCanvases = [];
+  const tag = $('sexe').value, tagTxt = {tout: '', males: 'MÂLES', femelles: 'FEMELLES'}[tag], head = tagTxt ? 24 : 0;
+  for (let p = 0; p * per < list.length; p++){
+    const part = list.slice(p * per, (p + 1) * per), W = part[0].img.width;
+    const sh = document.createElement('canvas'); sh.width = W + lab; sh.height = head + part.reduce((s, c) => s + c.img.height + 4, 0);
+    const x = sh.getContext('2d'); x.fillStyle = '#111'; x.fillRect(0, 0, sh.width, sh.height);
+    let y = head;
+    if (tagTxt){ x.fillStyle = tag === 'males' ? '#4aa3ff' : '#ff6fa8'; x.font = 'bold 16px sans-serif'; x.textBaseline = 'middle';
+      x.fillText(`${tagTxt} · planche ${p+1}`, 6, 12); }
+    part.forEach((c, i) => {
+      const h = c.img.height; x.drawImage(c.img, lab, y);
+      x.fillStyle = c.gapBefore ? '#e0a24a' : '#cfd6cb'; x.font = 'bold 13px sans-serif'; x.textBaseline = 'middle';
+      x.fillText(String(p * per + i + 1), 3, y + h / 2); y += h + 4;
+    });
+    sheetCanvases.push(sh);
+    const a = document.createElement('a'); a.download = `planche-${tag !== 'tout' ? tag + '-' : ''}${String(p+1).padStart(2,'0')}.png`; a.href = sh.toDataURL('image/png');
+    a.innerHTML = `<button type="button">Planche ${p+1} (${p*per+1}–${p*per+part.length})</button>`; $('sheets').appendChild(a);
+  }
+  cntShots.forEach((c, i) => {
+    const sh = document.createElement('canvas'); sh.width = c.width; sh.height = c.height + 24;
+    const x = sh.getContext('2d'); x.fillStyle = '#111'; x.fillRect(0, 0, sh.width, sh.height);
+    x.fillStyle = '#ff9f3a'; x.font = 'bold 16px sans-serif'; x.textBaseline = 'middle';
+    x.fillText(`COMPTEURS${tagTxt ? ' · ' + tagTxt : ''} · vue ${i+1}`, 6, 12); x.drawImage(c, 0, 24);
+    sheetCanvases.push(sh);
+    const a = document.createElement('a'); a.download = `compteurs-${String(i+1).padStart(2,'0')}.png`; a.href = sh.toDataURL('image/png');
+    a.innerHTML = `<button type="button">Compteurs ${i+1}</button>`; $('sheets').appendChild(a);
+  });
+  const files = [...$('sheets').querySelectorAll('a')].map(a => ({name: a.download, data: dataUrlBytes(a.href)}));
+  if (files.length){
+    const z = document.createElement('a'); z.download = `planches-${tag === 'tout' ? 'etable' : tag}.zip`; z.href = URL.createObjectURL(makeZip(files));
+    z.innerHTML = '<button type="button" class="primary">Tout télécharger (zip)</button>';
+    $('sheets').prepend(z);
+    const pd = document.createElement('a'); pd.download = `planches-${tag === 'tout' ? 'etable' : tag}.pdf`; pd.href = URL.createObjectURL(makePdf(sheetCanvases));
+    pd.innerHTML = '<button type="button" class="primary">Tout télécharger (PDF)</button>';
+    $('sheets').prepend(pd);
+  }
+  $('sheetsHint').hidden = list.length === 0; $('btnProc').disabled = false;
+};
+</script>
+</body>
+</html>

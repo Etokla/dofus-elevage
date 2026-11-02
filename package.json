@@ -1,0 +1,19 @@
+{
+  "name": "dofus-elevage",
+  "version": "0.1.0",
+  "description": "Relevé d'étable Muldo (Dofus) par partage de fenêtre, 100 % dans le navigateur",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "node --test tests/zones.test.js tests/diagnostic-windows.test.js",
+    "test:long": "node --test --test-timeout=1200000 tests/defilement.test.js",
+    "start": "npx --yes http-server@14.1.1 -p 8080 -c-1 ."
+  },
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "pngjs": "7.0.0"
+  },
+  "private": true
+}

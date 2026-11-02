@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Test barre de titre</title>
+<style>body{font:15px/1.5 system-ui,sans-serif;margin:24px 16px;background:#f5f6f2;color:#1d221c}button{font:inherit;padding:8px 14px}pre{background:#fff;border:1px solid #ccc;padding:10px;white-space:pre-wrap}canvas{max-width:100%;border:1px solid #ccc;display:block;margin:10px 0}</style>
+</head><body>
+<h1>Test : haut de la fenêtre capturée</h1>
+<p>Partage la fenêtre Dofus. La page prend une seule image, garde seulement la bande du haut (barre de titre), arrête le partage et l'affiche ici. Rien n'est envoyé : télécharge l'image et envoie-la-moi.</p>
+<button id="b">Partager une fenêtre</button>
+<pre id="o">—</pre>
+<canvas id="c" width="10" height="10"></canvas>
+<a id="d" download="barre-titre.png" hidden><button type="button">Télécharger la bande</button></a>
+<script>
+document.getElementById('b').onclick = async () => {
+  const o = document.getElementById('o');
+  try {
+    const s = await navigator.mediaDevices.getDisplayMedia({video: true});
+    const t = s.getVideoTracks()[0], v = document.createElement('video');
+    v.muted = true; v.srcObject = s; await v.play(); await new Promise(r => setTimeout(r, 400));
+    const W = v.videoWidth, H = v.videoHeight, h = Math.min(H, 90), c = document.getElementById('c');
+    c.width = W; c.height = h; c.getContext('2d').drawImage(v, 0, 0, W, h, 0, 0, W, h);
+    s.getTracks().forEach(x => x.stop());
+    o.textContent = `Image capturée : ${W}×${H} · bande du haut gardée : ${h} px\nNavigateur : ${navigator.userAgent}`;
+    const d = document.getElementById('d'); d.href = c.toDataURL('image/png'); d.hidden = false;
+  } catch (e) { o.textContent = 'Annulé : ' + e.message; }
+};
+</script>
+</body></html>

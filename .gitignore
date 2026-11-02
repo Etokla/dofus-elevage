@@ -1,0 +1,5 @@
+node_modules/
+.DS_Store
+*.log
+# relevés personnels (PDF, captures) : ne pas les publier
+releves/
