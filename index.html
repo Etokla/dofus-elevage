@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Capture d'étable</title>
+<title>Relevé d'étable Muldo</title>
 <style>
 /* Layout : colonne unique, étapes empilées ; outil local de test */
 :root{
@@ -38,18 +38,22 @@ pre{font-family:var(--mono);font-size:12.5px;background:var(--bg);border:1px sol
 .ok{color:var(--accent)} .warn{color:var(--warn)} .bad{color:var(--bad)}
 label{display:flex;gap:6px;align-items:center}
 input[type=range]{width:140px}
+details>summary{cursor:pointer;color:var(--muted);font-size:13px;padding:2px 0;user-select:none;list-style:revert}
+details[open]>summary{margin-bottom:10px}
+details>section{margin-top:12px}
+#secGuide h2{font-size:17px}
 </style>
 </head>
 <body>
 <main>
 <header>
-  <h1>Capture d'étable</h1>
-  <p class="lead">Prototype de test : partage la fenêtre Dofus, fais défiler ton étable, et vérifie si la capture et la lecture tiennent la route. Tout reste sur ton PC : les images ne sont envoyées nulle part.</p>
+  <h1>Relevé d'étable Muldo</h1>
+  <p class="lead">Partage ta fenêtre Dofus, fais défiler l'étable, récupère le PDF. Tout reste dans ton navigateur : aucune image n'est envoyée.</p>
 </header>
 
 <section>
   <h2><span class="n">1</span> Partager la fenêtre Dofus</h2>
-  <p class="hint">Seule la fenêtre Dofus est acceptée : la page lit sa barre de titre (classe de ton personnage) ; si tu partages autre chose, le partage est coupé aussitôt, sans rien afficher ni envoyer. Tu peux ouvrir l'Élevage avant ou après le partage. Dofus doit être en mode fenêtré (pas plein écran). La liste des fenêtres s'ouvre directement : clique sur la fenêtre Dofus (son titre commence par le nom de ton personnage), puis sur « Partager ». Tu ne fais ce choix qu'une fois par session : garde le partage ouvert entre deux relevés. La page ne peut que voir l'image : elle ne contrôle ni le clavier, ni la souris, ni tes fichiers.</p>
+  <p class="hint">Dofus doit être en mode fenêtré (pas plein écran). Seule la fenêtre Dofus est acceptée — toute autre est refusée sans rien lire ni envoyer. Tu peux ouvrir l'Élevage avant ou après le partage.</p>
   <div class="row">
     <button id="btnShare" class="primary">Partager une fenêtre</button>
     <button id="btnStopShare" disabled>Arrêter le partage</button>
@@ -57,31 +61,39 @@ input[type=range]{width:140px}
   </div>
 </section>
 
-<section>
-  <h2><span class="n">2</span> Délimiter la liste des montures</h2>
-  <p class="hint">La détection automatique se lance au partage, quelle que soit la position de défilement : les rectangles couvrent toute la partie visible de la liste (vert) et du panneau FILTRES (orange), mesurée grâce à leurs barres de défilement. Vérifie-les sur l'aperçu. Sinon, trace-les à la main : un rectangle autour de la liste, sur toute sa largeur, sans le titre « ETABLE » ni les boutons. Laisse une petite marge au-dessus de la première monture : une carte collée au bord du rectangle est considérée comme coupée et ignorée.</p>
+<section id="secZones" hidden>
+  <h2><span class="n">2</span> Zones détectées</h2>
   <div id="stage"><canvas id="preview" width="640" height="360"></canvas></div>
   <div class="row">
-    <button id="btnAuto" disabled class="primary">Détecter les zones automatiquement</button>
+    <button id="btnAuto" disabled>Redétecter les zones</button>
     <span id="autoState" class="hint"></span>
   </div>
-  <div class="row">
-    <label class="hint"><input type="radio" name="zone" value="liste" checked> Je trace la liste des montures</label>
-    <label class="hint"><input type="radio" name="zone" value="compteurs"> Je trace le panneau FILTRES (compteurs)</label>
-  </div>
-  <span id="cropState" class="hint">Zone liste : fenêtre entière.</span> <span id="cropCntState" class="hint">Zone compteurs : non tracée.</span>
+  <details>
+    <summary>Tracer les zones à la main (si la détection automatique échoue)</summary>
+    <p class="hint">Trace un rectangle sur l'aperçu : autour de la liste des montures (vert), ou autour du panneau FILTRES (orange). Laisse une petite marge au-dessus de la première monture.</p>
+    <div class="row">
+      <label class="hint"><input type="radio" name="zone" value="liste" checked> Liste des montures</label>
+      <label class="hint"><input type="radio" name="zone" value="compteurs"> Panneau FILTRES</label>
+    </div>
+    <div class="row">
+      <span id="cropState" class="hint">Zone liste : fenêtre entière.</span>
+      <span id="cropCntState" class="hint">Zone compteurs : non tracée.</span>
+    </div>
+  </details>
 </section>
 
-<section>
+<section id="secGuide" hidden>
   <h2><span class="n">★</span> Parcours guidé</h2>
-  <p class="hint">Une fois la fenêtre Dofus partagée et les zones vérifiées sur l'aperçu, lance le parcours : une petite fenêtre reste par-dessus Dofus et t'indique quoi faire, étape par étape (compteurs, mâles, femelles, reproducteurs, succès Gen 10). À la fin, tout est réuni dans un seul PDF.</p>
+  <p class="hint">Une petite fenêtre reste par-dessus Dofus et t'indique quoi faire étape par étape : compteurs, mâles, femelles, reproducteurs, succès Gen 10. À la fin, le PDF est prêt.</p>
   <div class="row"><button id="btnGuide" disabled class="primary">Lancer le parcours guidé</button><span id="guideState" class="hint"></span></div>
   <div class="row" id="guideOut"></div>
 </section>
 
+<details id="secManuel">
+<summary>Mode avancé — enregistrement manuel sans parcours guidé</summary>
 <section>
   <h2><span class="n">3</span> Enregistrer le défilement</h2>
-  <p class="hint">Place la liste tout en haut, puis lance l'enregistrement : un mini-compteur flottant s'ouvre par-dessus Dofus (déplace-le dans un coin). Fais glisser la barre de défilement vers le bas. Si le compteur passe au rouge et qu'un bip retentit, remonte de quelques lignes et reprends plus lentement. Une image n'est gardée que si elle a changé depuis la précédente.</p>
+  <p class="hint">Place la liste tout en haut, lance l'enregistrement, puis fais glisser la barre vers le bas. Si le compteur passe au rouge et qu'un bip retentit, remonte de quelques lignes et reprends plus lentement.</p>
   <div class="row">
     <button id="btnRec" disabled class="primary">Démarrer l'enregistrement</button>
     <button id="btnStopRec" disabled>Arrêter</button>
@@ -97,7 +109,7 @@ input[type=range]{width:140px}
 
 <section>
   <h2><span class="n">3 bis</span> Capturer les compteurs du jeu</h2>
-  <p class="hint">Pour vérifier le résultat sans rien saisir. Trace d'abord la zone du panneau FILTRES (étape 2). Lance la capture, puis fais défiler le panneau FILTRES de haut en bas en dépliant les sections utiles (Génération, Sexe, Couleurs). Défile normalement : l'outil garde une vue chaque fois que le panneau a avancé d'environ un tiers de sa hauteur, et les ajoute à la fin du PDF. Vérifie dans les vignettes que tout le panneau y est.</p>
+  <p class="hint">Lance la capture, puis fais défiler le panneau FILTRES de haut en bas en dépliant Génération, Sexe et Couleurs. L'outil garde une vue à chaque tiers de défilement.</p>
   <div class="row">
     <button id="btnCnt" disabled class="primary">Capturer les compteurs</button>
     <button id="btnCntStop" disabled>Arrêter</button>
@@ -108,7 +120,7 @@ input[type=range]{width:140px}
 
 <section>
   <h2><span class="n">4</span> Isoler et dédoublonner les montures</h2>
-  <p class="hint">Chaque capture est découpée en cartes de monture complètes (les cartes coupées en haut et en bas sont ignorées). Les captures sont ensuite alignées sur les cartes qu'elles ont en commun, ce qui évite les doublons. Deux montures identiques restent deux montures.</p>
+  <p class="hint">Découpe les captures en cartes complètes et supprime les doublons. Deux montures identiques restent deux montures.</p>
   <div class="row">
     <label class="hint">Contenu de la capture
       <select id="sexe" style="font:inherit;padding:4px 6px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--fg)">
@@ -118,9 +130,10 @@ input[type=range]{width:140px}
     <label class="hint">Total attendu (affiché dans l'étable) <input id="expected" type="number" min="0" style="width:80px;font:inherit;padding:4px 6px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--fg)"></label>
   </div>
   <p class="stat" id="procStats"></p>
-  <p class="hint" id="sheetsHint" hidden>Planches prêtes : chacune contient jusqu'à 40 montures, sans doublon ni coupure. Ce sont elles qu'une IA de vision lira (nom, génération, sexe).</p>
+  <p class="hint" id="sheetsHint" hidden>Planches prêtes. Ce sont elles qu'une IA de vision lira (nom, génération, sexe).</p>
   <div class="row" id="sheets"></div>
 </section>
+</details>
 </main>
 
 <script>
@@ -163,6 +176,7 @@ async function startShare(md, focusDofus){
     $('shareState').textContent = refus; $('shareState').className = 'hint bad'; return false;
   }
   video.srcObject = stream; await video.play();
+  $('secZones').hidden = false;
   track.addEventListener('ended', stopShare);
   if (isDofus){ waitingElevage = true; }
   else { verifying = true; $('shareState').textContent = '① Est-ce Dofus ? Lecture de la barre de titre de la fenêtre (rien n’est affiché ni envoyé)…'; $('shareState').className = 'hint warn'; verifyT0 = performance.now(); checkDofusTitle(); }
@@ -513,7 +527,10 @@ function runAutoZones(){
 }
 $('btnAuto').onclick = runAutoZones;
 let shortList = false;
-function guideReady(){ $('btnGuide').disabled = !(stream && crop && cropCnt) || verifying || waitingElevage || shortList; }
+function guideReady(){
+  $('btnGuide').disabled = !(stream && crop && cropCnt) || verifying || waitingElevage || shortList;
+  if (stream && !verifying && !waitingElevage && crop && cropCnt) $('secGuide').hidden = false;
+}
 prev.addEventListener('pointerup', () => {
   if (!drag) return; const r = rectFrom(drag); drag = null;
   const z = (r.w > 20 && r.h > 20) ? {x:Math.round(r.x), y:Math.round(r.y), w:Math.round(r.w), h:Math.round(r.h)} : null;
