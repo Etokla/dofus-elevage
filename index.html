@@ -540,9 +540,15 @@ function runAutoZones(){
   c.getContext('2d', {willReadFrequently: true}).drawImage(video, 0, 0);
   const r = autoZones(toGray(c), detectCards);
   const msg = [];
-  if (r.list){ crop = r.list; $('cropState').textContent = `Zone liste : ${crop.w} × ${crop.h} px (auto, ${r.nCards} montures visibles).`; frameByLabels(c, r.list, r.nCards); $('secZones').hidden = false; }
+  if (r.list){ crop = r.list; $('cropState').textContent = `Zone liste : ${crop.w} × ${crop.h} px (auto, ${r.nCards} montures visibles).`; $('secZones').hidden = false; }
   else msg.push('liste non trouvée');
   if (r.cnt){ cropCnt = r.cnt; $('cropCntState').textContent = `Zone compteurs : ${cropCnt.w} × ${cropCnt.h} px (auto).`; $('btnCnt').disabled = false; }
+  // Étendre la zone liste à la hauteur du panneau FILTRES (piste de défilement) — fiable et immédiat, sans OCR
+  if (r.list && r.cnt){
+    crop = {x: r.list.x, y: r.cnt.y, w: r.list.w, h: r.cnt.h};
+    $('cropState').textContent = `Zone liste : ${crop.w} × ${crop.h} px (auto, hauteur du panneau).`;
+    frameByLabels(c, crop, r.nCards);   // affine ensuite par OCR (ETABLE / GÉNÉTIQUE)
+  }
   else msg.push('panneau FILTRES non trouvé');
   let txt = msg.length ? `Détection incomplète (${msg.join(', ')}) : agrandis la fenêtre Dofus si elle est petite, relance la détection, ou trace la zone à la main.` : "Zones détectées. Vérifie les rectangles sur l'aperçu.";
   if (r.filtersActive) txt += " ⚠ Des filtres sont cochés dans le panneau FILTRES : décoche-les tous avant de lancer le parcours guidé, sinon le relevé sera incomplet.";
