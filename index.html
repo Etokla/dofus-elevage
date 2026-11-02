@@ -175,7 +175,6 @@ async function startShare(md, focusDofus){
     $('shareState').textContent = refus; $('shareState').className = 'hint bad'; return false;
   }
   video.srcObject = stream; await video.play();
-  $('secZones').hidden = false;
   track.addEventListener('ended', stopShare);
   if (isDofus){ waitingElevage = true; }
   else { verifying = true; $('shareState').textContent = '① Est-ce Dofus ? Lecture de la barre de titre de la fenêtre (rien n’est affiché ni envoyé)…'; $('shareState').className = 'hint warn'; verifyT0 = performance.now(); checkDofusTitle(); }
@@ -510,7 +509,7 @@ function runAutoZones(){
   c.getContext('2d', {willReadFrequently: true}).drawImage(video, 0, 0);
   const r = autoZones(toGray(c), detectCards);
   const msg = [];
-  if (r.list){ crop = r.list; $('cropState').textContent = `Zone liste : ${crop.w} × ${crop.h} px (auto, ${r.nCards} montures visibles).`; frameByLabels(c, r.list, r.nCards); }
+  if (r.list){ crop = r.list; $('cropState').textContent = `Zone liste : ${crop.w} × ${crop.h} px (auto, ${r.nCards} montures visibles).`; frameByLabels(c, r.list, r.nCards); $('secZones').hidden = false; }
   else msg.push('liste non trouvée');
   if (r.cnt){ cropCnt = r.cnt; $('cropCntState').textContent = `Zone compteurs : ${cropCnt.w} × ${cropCnt.h} px (auto).`; $('btnCnt').disabled = false; }
   else msg.push('panneau FILTRES non trouvé');
@@ -522,6 +521,7 @@ function runAutoZones(){
     clearTimeout(runAutoZones.t); runAutoZones.t = setTimeout(() => { if (!recTimer && !cntOn && !guided) runAutoZones(); }, 2000); }
   $('autoState').textContent = txt;
   $('autoState').className = msg.length || (r.list && r.list.w < 250) ? 'hint warn' : 'hint ok';
+  $('secZones').hidden = false;
   guideReady();
 }
 $('btnAuto').onclick = runAutoZones;
