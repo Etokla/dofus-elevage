@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="fr">
 <head>
 <meta charset="utf-8">
@@ -175,7 +175,7 @@ async function startShare(md, focusDofus){
   video.srcObject = stream; await video.play();
   track.addEventListener('ended', stopShare);
   if (isDofus){ waitingElevage = true; }
-  else { verifying = true; $('shareState').textContent = '① Est-ce Dofus ? Lecture de la barre de titre de la fenêtre (rien n’est affiché ni envoyé)…'; $('shareState').className = 'hint warn'; verifyT0 = performance.now(); checkDofusTitle(); }
+  else { verifying = true; $('shareState').textContent = "① Est-ce Dofus ? Lecture de la barre de titre de la fenêtre (rien n'est affiché ni envoyé)…"; $('shareState').className = 'hint warn'; verifyT0 = performance.now(); checkDofusTitle(); }
   $('btnShare').disabled = true; $('btnStopShare').disabled = false; $('btnRec').disabled = false; $('btnDiag').disabled = false; $('btnCnt').disabled = !cropCnt; $('btnRec').disabled = true; $('btnDiag').disabled = true; guideReady();
   if (waitingElevage) setTimeout(() => waitElevage(label), 300);   // (titre fourni par le navigateur : rare dans Chrome)
   draw();
@@ -442,11 +442,11 @@ async function checkDofusTitle(){
     waitElevage(nom);
   } else if (r.band && normTxt(r.text).replace(/[^a-z0-9]/g, '').length >= 4){
     verifying = false; stopShare();
-    $('shareState').textContent = 'Ce n’est pas une fenêtre Dofus (aucune classe dans sa barre de titre) : le partage a été coupé, sans rien afficher ni envoyer. Partage la fenêtre du jeu.';
+    $('shareState').textContent = "Ce n'est pas une fenêtre Dofus (aucune classe dans sa barre de titre) : le partage a été coupé, sans rien afficher ni envoyer. Partage la fenêtre du jeu.";
     $('shareState').className = 'hint bad';
   } else {
     // pas de barre de titre lisible (plein écran, lecteur indisponible) : on se rabat sur la liste des montures
-    $('shareState').textContent = 'Barre de titre illisible (Dofus en plein écran ?) : vérification par la liste des montures de l’Élevage (3 s max)…';
+    $('shareState').textContent = "Barre de titre illisible (Dofus en plein écran ?) : vérification par la liste des montures de l'Élevage (3 s max)…";
     verifyT0 = performance.now(); verifyByImage(0);
   }
 }
@@ -467,14 +467,14 @@ async function verifyByImage(n){
   if (!stream || !verifying) return;
   const t0 = performance.now(), ok = await hasElevage(n);
   if (!stream || !verifying) return;
-  if (!ok) $('shareState').textContent = `Vérification de la fenêtre… Chrome ne donne pas son titre : la seule preuve que c’est Dofus est la liste des montures de l’Élevage, cherchée dans l’image (rien n’est affiché ni envoyé). (image ${lastCheckSize}, essai ${n + 1})`;
+  if (!ok) $('shareState').textContent = `Vérification de la fenêtre… Chrome ne donne pas son titre : la seule preuve que c'est Dofus est la liste des montures de l'Élevage, cherchée dans l'image (rien n'est affiché ni envoyé). (image ${lastCheckSize}, essai ${n + 1})`;
   if (ok){
     verifying = false;
     $('shareState').textContent = `Fenêtre Élevage de Dofus reconnue en ${((performance.now() - verifyT0)/1000).toFixed(1)} s : partage en cours. [titre reçu : « ${stream.getVideoTracks()[0].label} »]`; $('shareState').className = 'hint ok';
     $('btnRec').disabled = false; $('btnDiag').disabled = false; $('btnAuto').disabled = false; runAutoZones(); guideReady();
   } else if (performance.now() - verifyT0 > 3000 && n >= 5){
     verifying = false; stopShare();
-    $('shareState').textContent = `Ce n’est pas la fenêtre Élevage de Dofus (aucune liste de montures dans l’image) : le partage a été coupé, sans rien afficher ni envoyer. Ouvre l’Élevage dans Dofus, puis partage à nouveau la fenêtre du jeu. [titre reçu : « ${lastLabel} »] (image ${lastCheckSize}, ${n + 1} essais, ${((performance.now() - verifyT0)/1000).toFixed(1)} s)`;
+    $('shareState').textContent = `Ce n'est pas la fenêtre Élevage de Dofus (aucune liste de montures dans l'image) : le partage a été coupé, sans rien afficher ni envoyer. Ouvre l'Élevage dans Dofus, puis partage à nouveau la fenêtre du jeu. [titre reçu : « ${lastLabel} »] (image ${lastCheckSize}, ${n + 1} essais, ${((performance.now() - verifyT0)/1000).toFixed(1)} s)`;
     $('shareState').className = 'hint bad';
   } else setTimeout(() => verifyByImage(n + 1), Math.max(100, 500 - (performance.now() - t0)));
 }
@@ -494,7 +494,7 @@ async function frameByLabels(c, L, nCards){
     const ge = words.filter(o => /^g.n.tique$/.test(o.t)).sort((a, b) => b.b.y0 - a.b.y0)[0];
     if (!et || !ge || L !== crop) return;   // repères introuvables, ou zone changée entre-temps : on garde la mesure par la barre
     const top = y0 + Math.round(et.b.y1 / k) + 2, th = (ge.b.y1 - ge.b.y0) / k;
-    const bot = y0 + Math.round(ge.b.y0 / k) - 2;   // juste au-dessus du texte du bouton : mieux vaut un bout de bouton dans la zone qu’une dernière carte coupée
+    const bot = y0 + Math.round(ge.b.y0 / k) - 2;   // juste au-dessus du texte du bouton : mieux vaut un bout de bouton dans la zone qu'une dernière carte coupée
     if (bot - top < pitch * 2) return;
     crop = {x: L.x, y: top, w: L.w, h: bot - top};
     $('cropState').textContent = `Zone liste : ${crop.w} × ${crop.h} px (auto, encadrée par ETABLE et GÉNÉTIQUE).`;
@@ -511,8 +511,8 @@ function runAutoZones(){
   else msg.push('liste non trouvée');
   if (r.cnt){ cropCnt = r.cnt; $('cropCntState').textContent = `Zone compteurs : ${cropCnt.w} × ${cropCnt.h} px (auto).`; $('btnCnt').disabled = false; }
   else msg.push('panneau FILTRES non trouvé');
-  let txt = msg.length ? `Détection incomplète (${msg.join(', ')}) : agrandis la fenêtre Dofus si elle est petite, relance la détection, ou trace la zone à la main.` : 'Zones détectées. Vérifie les rectangles sur l’aperçu.';
-  if (r.list && r.list.w < 250) txt += ' Attention : la liste est petite à l’écran, la lecture des noms sera moins fiable. Agrandis la fenêtre Dofus si tu peux.';
+  let txt = msg.length ? `Détection incomplète (${msg.join(', ')}) : agrandis la fenêtre Dofus si elle est petite, relance la détection, ou trace la zone à la main.` : "Zones détectées. Vérifie les rectangles sur l'aperçu.";
+  if (r.list && r.list.w < 250) txt += " Attention : la liste est petite à l'écran, la lecture des noms sera moins fiable. Agrandis la fenêtre Dofus si tu peux.";
   // liste filtrée (peu de montures) : la hauteur mesurée est trop courte pour la liste complète ; on remesure dès qu'elle s'allonge
   shortList = !!(r.list && r.nCards < 6);
   if (r.list && r.nCards < 6){ txt += ' Liste courte (un filtre est coché ?) : décoche les filtres (RÉINITIALISER) ; la zone sera remesurée automatiquement et le parcours guidé débloqué.';
@@ -592,7 +592,7 @@ function processFrame(src, W, H){
   }
   const S = det.cards.map(([y0, y1]) => ({y0, y1, sig: cardSig(img, y0, y1), src: c}));
   const st = aligner.add(img, S, keepCard);
-  if (st === 'gap'){ if (performance.now() - lastBad > 1200) beep(); lastBad = performance.now(); setStatus('bad', aligner.lost ? 'Trop vite : position perdue. Remonte jusqu’aux dernières montures capturées, l’outil reprendra tout seul.' : `Des montures ont été sautées (${aligner.missing().length}). Remonte un peu et redescends plus lentement.`); }
+  if (st === 'gap'){ if (performance.now() - lastBad > 1200) beep(); lastBad = performance.now(); setStatus('bad', aligner.lost ? "Trop vite : position perdue. Remonte jusqu'aux dernières montures capturées, l'outil reprendra tout seul." : `Des montures ont été sautées (${aligner.missing().length}). Remonte un peu et redescends plus lentement.`); }
   else if (st === 'ok' && performance.now() - lastBad > 1500) setStatus('ok', 'Vitesse correcte.');
   else setStatus(performance.now() - lastBad > 1500 ? 'ok' : 'bad', $('speed').textContent);
 }
@@ -600,7 +600,7 @@ async function openPip(){
   if (!('documentPictureInPicture' in window)) return;
   try {
     pip = await documentPictureInPicture.requestWindow({width: 230, height: 120});
-    pip.document.body.innerHTML = '<div style="font:600 13px system-ui;color:#fff;padding:10px;display:flex;flex-direction:column;gap:4px"><div>Montures captées</div><div id="n" style="font:700 34px system-ui">0</div><div id="t">Fais défiler l’étable</div></div>';
+    pip.document.body.innerHTML = `<div style="font:600 13px system-ui;color:#fff;padding:10px;display:flex;flex-direction:column;gap:4px"><div>Montures captées</div><div id="n" style="font:700 34px system-ui">0</div><div id="t">Fais défiler l'étable</div></div>`;
     pip.document.body.style.cssText = 'margin:0;background:#222';
   } catch (e) { pip = null; }
 }
@@ -626,7 +626,7 @@ $('btnRec').onclick = async () => {
   try { audioCtx = audioCtx || new AudioContext(); audioCtx.resume(); } catch (e) {}
   $('btnRec').disabled = true; $('btnStopRec').disabled = false; $('btnProc').disabled = true; $('btnReset').disabled = false;
   if (!guided) await openPip();
-  recTimer = true; setStatus('wait', 'Fais défiler l’étable.');
+  recTimer = true; setStatus('wait', "Fais défiler l'étable.");
   startLoop();
 };
 // Recommencer : efface la capture et les planches, garde le partage et la zone tracée
@@ -681,13 +681,13 @@ const STEPS = [
   {key: 'cnt', title: 'Étape 1/5 · Compteurs', label: 'Vues gardées',
    text: 'Clique sur Dofus pour le remettre au premier plan. Dans FILTRES, ne coche rien et déplie Génération, Sexe et Couleurs. Clique Démarrer, puis fais défiler tout le panneau FILTRES doucement.'},
   {key: 'males', title: 'Étape 2/5 · Mâles', label: 'Montures captées',
-   text: 'Coche « Monture mâle » dans FILTRES et remonte la liste tout en haut. Clique Démarrer, puis fais glisser la barre jusqu’en bas.'},
+   text: "Coche « Monture mâle » dans FILTRES et remonte la liste tout en haut. Clique Démarrer, puis fais glisser la barre jusqu'en bas."},
   {key: 'femelles', title: 'Étape 3/5 · Femelles', label: 'Montures captées',
-   text: 'Décoche « Monture mâle », coche « Monture femelle » et remonte la liste en haut. Clique Démarrer, puis fais glisser la barre jusqu’en bas.'},
+   text: "Décoche « Monture mâle », coche « Monture femelle » et remonte la liste en haut. Clique Démarrer, puis fais glisser la barre jusqu'en bas."},
   {key: 'repro', title: 'Étape 4/5 · Reproducteurs', label: 'Montures captées',
-   text: 'Décoche « Monture femelle ». En bas du panneau FILTRES, section CAPACITÉS, coche « Reproducteur » et remonte la liste en haut. Clique Démarrer, puis fais glisser la barre jusqu’en bas (s’il y en a peu, attends juste 2 secondes).'},
-  {key: ‘suc’, title: ‘Étape 5/5 · Succès Gen 10 (optionnel)’, label: ‘Vues prises’,
-   text: ‘Ferme l’Élevage. Ouvre les Succès › Élevage › Muldos et clique sur « Muldo : Dixième génération » pour voir ses objectifs, liste en haut. Clique « Prendre une vue », fais défiler d’un écran, et recommence jusqu’à la dernière ligne. Tu peux aussi passer directement en cliquant « Terminer ».’},
+   text: "Décoche « Monture femelle ». En bas du panneau FILTRES, section CAPACITÉS, coche « Reproducteur » et remonte la liste en haut. Clique Démarrer, puis fais glisser la barre jusqu'en bas (s'il y en a peu, attends juste 2 secondes)."},
+  {key: 'suc', title: 'Étape 5/5 · Succès Gen 10 (optionnel)', label: 'Vues prises',
+   text: "Ferme l'Élevage. Ouvre les Succès › Élevage › Muldos et clique sur « Muldo : Dixième génération » pour voir ses objectifs, liste en haut. Clique « Prendre une vue », fais défiler d'un écran, et recommence jusqu'à la dernière ligne. Tu peux aussi passer directement en cliquant « Terminer »."},
 ];
 function gRender(){
   if (!pip || pip.closed) return;
@@ -701,7 +701,7 @@ function gRender(){
     <div style="display:flex;gap:6px;flex-wrap:wrap">
       <button id="go" style="font:600 13px system-ui;padding:6px 10px">${st.key === 'suc' ? 'Prendre une vue' : 'Démarrer'}</button>
       <button id="next" ${st.key === 'suc' ? '' : 'disabled'} style="font:600 13px system-ui;padding:6px 10px">${gStep === STEPS.length - 1 ? 'Terminer' : 'Étape suivante'}</button>
-      <button id="redo" disabled style="font:13px system-ui;padding:6px 10px">Refaire l’étape</button>
+      <button id="redo" disabled style="font:13px system-ui;padding:6px 10px">Refaire l'étape</button>
     </div></div>`;
   d.getElementById('go').onclick = gStart; d.getElementById('next').onclick = gNext; d.getElementById('redo').onclick = gRedo;
 }
@@ -778,7 +778,7 @@ function gFinish(){
   if (pip && !pip.closed) pip.close();
   pip = null;
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; cancelAnimationFrame(raf); }
-  $(‘btnShare’).disabled = false; $(‘btnStopShare’).disabled = true; $(‘btnAuto’).disabled = true;
+  $('btnShare').disabled = false; $('btnStopShare').disabled = true; $('btnAuto').disabled = true;
   try { window.focus(); } catch(e) {}
 }
 $('btnGuide').onclick = async () => {
@@ -786,7 +786,7 @@ $('btnGuide').onclick = async () => {
   G.cnt = []; G.males = null; G.femelles = null; G.repro = null; G.suc = []; gStep = 0; guided = true; $('guideOut').innerHTML = ''; $('guideState').textContent = '';
   if (!('documentPictureInPicture' in window)){ $('guideState').textContent = 'Ton navigateur ne permet pas la fenêtre flottante : utilise Chrome ou Edge récent.'; guided = false; return; }
   try { pip = await documentPictureInPicture.requestWindow({width: 320, height: 250}); }
-  catch (e) { $('guideState').textContent = 'La fenêtre flottante n’a pas pu s’ouvrir.'; guided = false; return; }
+  catch (e) { $('guideState').textContent = "La fenêtre flottante n'a pas pu s'ouvrir."; guided = false; return; }
   pip.addEventListener('pagehide', () => { if (guided){ if (gRunning) gStopCurrent(false); guided = false; $('guideState').textContent = 'Parcours interrompu (fenêtre fermée).'; } });
   gRender();
 };
@@ -795,7 +795,7 @@ function gRenderShare(msg){
   const d = pip.document; d.body.style.background = '#222';
   d.body.innerHTML = `<div style="font:13px system-ui;color:#fff;padding:10px;display:flex;flex-direction:column;gap:8px">
     <div style="font-weight:700;color:#ffd166">Étape 0 · Partager Dofus</div>
-    <div style="line-height:1.35">Ouvre l’Élevage dans Dofus (liste des montures visible), puis clique ci-dessous et choisis la fenêtre du jeu. Dofus passera au premier plan.</div>
+    <div style="line-height:1.35">Ouvre l'Élevage dans Dofus (liste des montures visible), puis clique ci-dessous et choisis la fenêtre du jeu. Dofus passera au premier plan.</div>
     <div id="t" style="min-height:1.2em;opacity:.9">${msg || ''}</div>
     <button id="sh" style="font:600 13px system-ui;padding:6px 10px">Partager la fenêtre Dofus</button></div>`;
   d.getElementById('sh').onclick = async () => {
@@ -813,7 +813,7 @@ function gWaitZones(n){
   const t = pip.document.getElementById('t');
   if (t) t.textContent = verifying ? 'Vérification de la fenêtre…' : 'Détection des zones…';
   if (!verifying && n % 3 === 2) runAutoZones();
-  if (n > 40){ gRenderShare('Zones non trouvées : vérifie que l’Élevage est ouvert et la fenêtre Dofus assez grande, puis recommence.'); return; }
+  if (n > 40){ gRenderShare("Zones non trouvées : vérifie que l'Élevage est ouvert et la fenêtre Dofus assez grande, puis recommence."); return; }
   setTimeout(() => gWaitZones(n + 1), 700);
 }
 $('btnStopRec').onclick = stopRec;
