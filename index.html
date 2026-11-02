@@ -62,15 +62,20 @@ details>section{margin-top:12px}
 </section>
 
 <section id="secZones" hidden>
-  <h2><span class="n">2</span> Zones détectées</h2>
+  <h2><span class="n">2</span> Vérifier les zones</h2>
   <div id="stage"><canvas id="preview" width="640" height="360"></canvas></div>
+  <span id="autoState" class="hint"></span>
   <div class="row">
-    <button id="btnAuto" disabled>Redétecter les zones</button>
-    <span id="autoState" class="hint"></span>
+    <button id="btnGuide" disabled class="primary">Lancer le parcours guidé</button>
+    <span id="guideState" class="hint"></span>
   </div>
+  <div class="row" id="guideOut"></div>
   <details>
-    <summary>Tracer les zones à la main (si la détection automatique échoue)</summary>
-    <p class="hint">Trace un rectangle sur l'aperçu : autour de la liste des montures (vert), ou autour du panneau FILTRES (orange). Laisse une petite marge au-dessus de la première monture.</p>
+    <summary>Ajuster les zones (si les rectangles semblent incorrects)</summary>
+    <div class="row" style="margin-top:8px">
+      <button id="btnAuto" disabled>Redétecter automatiquement</button>
+    </div>
+    <p class="hint">Ou trace un rectangle sur l'aperçu : autour de la liste des montures (vert), ou autour du panneau FILTRES (orange). Laisse une petite marge au-dessus de la première monture.</p>
     <div class="row">
       <label class="hint"><input type="radio" name="zone" value="liste" checked> Liste des montures</label>
       <label class="hint"><input type="radio" name="zone" value="compteurs"> Panneau FILTRES</label>
@@ -80,13 +85,6 @@ details>section{margin-top:12px}
       <span id="cropCntState" class="hint">Zone compteurs : non tracée.</span>
     </div>
   </details>
-</section>
-
-<section id="secGuide" hidden>
-  <h2><span class="n">★</span> Parcours guidé</h2>
-  <p class="hint">Une petite fenêtre reste par-dessus Dofus et t'indique quoi faire étape par étape : compteurs, mâles, femelles, reproducteurs, succès Gen 10. À la fin, le PDF est prêt.</p>
-  <div class="row"><button id="btnGuide" disabled class="primary">Lancer le parcours guidé</button><span id="guideState" class="hint"></span></div>
-  <div class="row" id="guideOut"></div>
 </section>
 
 <div id="secManuel" hidden>
@@ -526,10 +524,7 @@ function runAutoZones(){
 }
 $('btnAuto').onclick = runAutoZones;
 let shortList = false;
-function guideReady(){
-  $('btnGuide').disabled = !(stream && crop && cropCnt) || verifying || waitingElevage || shortList;
-  if (stream && !verifying && !waitingElevage && crop && cropCnt) $('secGuide').hidden = false;
-}
+function guideReady(){ $('btnGuide').disabled = !(stream && crop && cropCnt) || verifying || waitingElevage || shortList; }
 prev.addEventListener('pointerup', () => {
   if (!drag) return; const r = rectFrom(drag); drag = null;
   const z = (r.w > 20 && r.h > 20) ? {x:Math.round(r.x), y:Math.round(r.y), w:Math.round(r.w), h:Math.round(r.h)} : null;
@@ -779,15 +774,12 @@ function gFinish(){
   const resume = `${m.length} mâles + ${f.length} femelles = ${m.length + f.length} montures · ${rp.length} reproducteurs · ${G.cnt.length} vues de compteurs · ${G.suc.length} vues de succès · ${gaps} monture(s) sautée(s) ou raccord(s) perdu(s)`;
   const a = document.createElement('a'); a.href = url; a.download = name; a.innerHTML = '<button type="button" class="primary">Télécharger le PDF complet</button>';
   $('guideOut').innerHTML = ''; $('guideOut').appendChild(a); $('guideState').textContent = resume;
-  if (pip && !pip.closed){
-    const d = pip.document; d.body.style.background = gaps ? '#5a3a10' : '#1f4d2a';
-    d.body.innerHTML = `<div style="font:13px system-ui;color:#fff;padding:10px;display:flex;flex-direction:column;gap:8px">
-      <div style="font-weight:700;color:#ffd166">Terminé</div><div>${resume}</div>
-      <button id="dl" style="font:600 13px system-ui;padding:6px 10px">Télécharger le PDF</button>
-      <div style="opacity:.8">Le lien est aussi sur la page de l’outil.</div></div>`;
-    d.getElementById('dl').onclick = () => a.click();
-  }
   guided = false;
+  if (pip && !pip.closed) pip.close();
+  pip = null;
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; cancelAnimationFrame(raf); }
+  $(‘btnShare’).disabled = false; $(‘btnStopShare’).disabled = true; $(‘btnAuto’).disabled = true;
+  try { window.focus(); } catch(e) {}
 }
 $('btnGuide').onclick = async () => {
   try { audioCtx = audioCtx || new AudioContext(); audioCtx.resume(); } catch (e) {}
