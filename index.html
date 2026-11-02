@@ -229,8 +229,9 @@ prev.addEventListener('pointermove', ev => { if (drag) drag.b = toCanvas(ev); })
 // img = {w, h, g: Float32Array} en niveaux de gris
 function autoZones(img, detectCards){
   const {w, h, g} = img, P = (x, y) => g[y*w + x];
-  // ---- 0) Panneau FILTRES (cherché d'abord : il désigne la bonne liste) : colonne de cases à cocher (carré clair, intérieur sombre)
-  const boxes = [];
+  // ---- 0) Panneau FILTRES (cherché d'abord : il désigne la bonne liste) : colonne de cases à cocher
+  // cases vides = carré clair, intérieur sombre ; cases cochées = carré clair, intérieur clair (croix)
+  const boxes = [], checkedBoxes = [];
   for (let y = 1; y < h - 30; y++){
     for (let x = 1; x < w - 30; x++){
       const v = P(x, y); if (v < 85 || P(x-1, y) > v - 35 || P(x, y-1) > v - 35) continue;   // coin haut-gauche
@@ -238,19 +239,29 @@ function autoZones(img, detectCards){
       if (L < 5 || L > 30) continue;
       const cx = x + (L >> 1);
       let yy = y + 1; while (yy < h && P(cx, yy) > v - 30 && yy - y < 4) yy++;          // bord haut (épaisseur)
-      const top = yy; while (yy < h && P(cx, yy) < v - 45) yy++;           // intérieur sombre
-      const inner = yy - top; if (inner < 2) continue;
-      const H = yy - y; if (Math.abs(H - L) > Math.max(3, L * 0.35) || yy >= h) continue;   // carré
+      const top = yy;
+      const interiorPixel = yy < h ? P(cx, yy) : 0;
+      const isDark = interiorPixel < v - 45;   // case vide
+      const isBright = interiorPixel > v - 25; // case cochée (croix claire)
+      if (!isDark && !isBright){ x += L; continue; }
+      let yy2 = top;
+      if (isDark){ while (yy2 < h && P(cx, yy2) < v - 45) yy2++; }
+      else { while (yy2 < h && P(cx, yy2) > v - 25) yy2++; }
+      const inner = yy2 - top; if (inner < 2){ x += L; continue; }
+      const H = yy2 - y; if (Math.abs(H - L) > Math.max(3, L * 0.35) || yy2 >= h){ x += L; continue; }
       const lit = (px, py) => Math.max(P(px, py), P(px-1, py), P(px+1, py)) > v - 40;
       let ok = true;
       for (let k = 2; k < H - 1 && ok; k++){ if (!lit(x, y + k) || !lit(x + L - 1, y + k)) ok = false; }
-      if (!ok) continue;
-      boxes.push({x, y, L}); x += L;
+      if (!ok){ x += L; continue; }
+      if (isDark) boxes.push({x, y, L}); else checkedBoxes.push({x, y, L});
+      x += L;
     }
   }
   const cols = [];
   for (const b of boxes){ const c = cols.find(c => Math.abs(c.x - b.x) <= 3 && Math.abs(c.L - b.L) <= 2); if (c) c.b.push(b); else cols.push({x: b.x, L: b.L, b: [b]}); }
   cols.sort((a, b) => b.b.length - a.b.length);
+  const checkedCols = [];
+  for (const b of checkedBoxes){ const c = checkedCols.find(c => Math.abs(c.x - b.x) <= 3 && Math.abs(c.L - b.L) <= 2); if (c) c.b.push(b); else checkedCols.push({x: b.x, L: b.L, b: [b]}); }
   // ---- 1) Liste : bandes horizontales uniformes longues (haut/bas des cartes), regroupées par colonne
   const runs = [];
   for (let y = 0; y < h; y++){
@@ -377,7 +388,10 @@ function autoZones(img, detectCards){
     cnt = {x: x0, y: y0, w: x1 - x0, h: y1 - y0};
   }
   if (!list) cnt = null;   // sans liste, la colonne de cases trouvée n'est pas fiable
-  return {list, cnt, nCards: best ? best.cards.length : 0, nBoxes: cols.length ? cols[0].b.length : 0};
+  // filtres actifs : des cases cochées dans la même colonne que les cases vides du panneau FILTRES
+  const fc2 = cols.length && cols[0].b.length >= 3 ? cols[0] : (checkedCols.length ? checkedCols[0] : null);
+  const filtersActive = fc2 ? checkedCols.some(cc => Math.abs(cc.x - fc2.x) <= 5 && Math.abs(cc.L - fc2.L) <= 2 && cc.b.length >= 1) : false;
+  return {list, cnt, nCards: best ? best.cards.length : 0, nBoxes: cols.length ? cols[0].b.length : 0, filtersActive};
 }
 
 // Image fraîche du partage : la balise <video> peut rester figée quand Chrome est caché derrière Dofus
@@ -512,6 +526,7 @@ function runAutoZones(){
   if (r.cnt){ cropCnt = r.cnt; $('cropCntState').textContent = `Zone compteurs : ${cropCnt.w} × ${cropCnt.h} px (auto).`; $('btnCnt').disabled = false; }
   else msg.push('panneau FILTRES non trouvé');
   let txt = msg.length ? `Détection incomplète (${msg.join(', ')}) : agrandis la fenêtre Dofus si elle est petite, relance la détection, ou trace la zone à la main.` : "Zones détectées. Vérifie les rectangles sur l'aperçu.";
+  if (r.filtersActive) txt += " ⚠ Des filtres sont cochés dans le panneau FILTRES : décoche-les tous avant de lancer le parcours guidé, sinon le relevé sera incomplet.";
   if (r.list && r.list.w < 250) txt += " Attention : la liste est petite à l'écran, la lecture des noms sera moins fiable. Agrandis la fenêtre Dofus si tu peux.";
   // liste filtrée (peu de montures) : la hauteur mesurée est trop courte pour la liste complète ; on remesure dès qu'elle s'allonge
   shortList = !!(r.list && r.nCards < 6);
