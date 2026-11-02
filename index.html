@@ -686,8 +686,8 @@ const STEPS = [
    text: 'Décoche « Monture mâle », coche « Monture femelle » et remonte la liste en haut. Clique Démarrer, puis fais glisser la barre jusqu’en bas.'},
   {key: 'repro', title: 'Étape 4/5 · Reproducteurs', label: 'Montures captées',
    text: 'Décoche « Monture femelle ». En bas du panneau FILTRES, section CAPACITÉS, coche « Reproducteur » et remonte la liste en haut. Clique Démarrer, puis fais glisser la barre jusqu’en bas (s’il y en a peu, attends juste 2 secondes).'},
-  {key: 'suc', title: 'Étape 5/5 · Succès Gen 10', label: 'Vues prises',
-   text: 'Ferme l’Élevage. Ouvre les Succès › Élevage › Muldos et clique sur « Muldo : Dixième génération » pour voir ses objectifs, liste en haut. Clique « Prendre une vue », fais défiler d’un écran, et recommence jusqu’à la dernière ligne (Aigue-marine et Prune).'},
+  {key: ‘suc’, title: ‘Étape 5/5 · Succès Gen 10 (optionnel)’, label: ‘Vues prises’,
+   text: ‘Ferme l’Élevage. Ouvre les Succès › Élevage › Muldos et clique sur « Muldo : Dixième génération » pour voir ses objectifs, liste en haut. Clique « Prendre une vue », fais défiler d’un écran, et recommence jusqu’à la dernière ligne. Tu peux aussi passer directement en cliquant « Terminer ».’},
 ];
 function gRender(){
   if (!pip || pip.closed) return;
@@ -700,7 +700,7 @@ function gRender(){
     <div id="t" style="min-height:1.2em;opacity:.9">Prêt.</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">
       <button id="go" style="font:600 13px system-ui;padding:6px 10px">${st.key === 'suc' ? 'Prendre une vue' : 'Démarrer'}</button>
-      <button id="next" disabled style="font:600 13px system-ui;padding:6px 10px">${gStep === STEPS.length - 1 ? 'Terminer' : 'Étape suivante'}</button>
+      <button id="next" ${st.key === 'suc' ? '' : 'disabled'} style="font:600 13px system-ui;padding:6px 10px">${gStep === STEPS.length - 1 ? 'Terminer' : 'Étape suivante'}</button>
       <button id="redo" disabled style="font:13px system-ui;padding:6px 10px">Refaire l’étape</button>
     </div></div>`;
   d.getElementById('go').onclick = gStart; d.getElementById('next').onclick = gNext; d.getElementById('redo').onclick = gRedo;
