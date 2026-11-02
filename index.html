@@ -229,9 +229,8 @@ prev.addEventListener('pointermove', ev => { if (drag) drag.b = toCanvas(ev); })
 // img = {w, h, g: Float32Array} en niveaux de gris
 function autoZones(img, detectCards){
   const {w, h, g} = img, P = (x, y) => g[y*w + x];
-  // ---- 0) Panneau FILTRES (cherché d'abord : il désigne la bonne liste) : colonne de cases à cocher
-  // cases vides = carré clair, intérieur sombre ; cases cochées = carré clair, intérieur clair (croix)
-  const boxes = [], checkedBoxes = [];
+  // ---- 0) Panneau FILTRES (cherché d'abord : il désigne la bonne liste) : colonne de cases à cocher (carré clair, intérieur sombre)
+  const boxes = [];
   for (let y = 1; y < h - 30; y++){
     for (let x = 1; x < w - 30; x++){
       const v = P(x, y); if (v < 85 || P(x-1, y) > v - 35 || P(x, y-1) > v - 35) continue;   // coin haut-gauche
@@ -239,29 +238,19 @@ function autoZones(img, detectCards){
       if (L < 5 || L > 30) continue;
       const cx = x + (L >> 1);
       let yy = y + 1; while (yy < h && P(cx, yy) > v - 30 && yy - y < 4) yy++;          // bord haut (épaisseur)
-      const top = yy;
-      const interiorPixel = yy < h ? P(cx, yy) : 0;
-      const isDark = interiorPixel < v - 45;   // case vide
-      const isBright = interiorPixel > v - 25; // case cochée (croix claire)
-      if (!isDark && !isBright){ x += L; continue; }
-      let yy2 = top;
-      if (isDark){ while (yy2 < h && P(cx, yy2) < v - 45) yy2++; }
-      else { while (yy2 < h && P(cx, yy2) > v - 25) yy2++; }
-      const inner = yy2 - top; if (inner < 2){ x += L; continue; }
-      const H = yy2 - y; if (Math.abs(H - L) > Math.max(3, L * 0.35) || yy2 >= h){ x += L; continue; }
+      const top = yy; while (yy < h && P(cx, yy) < v - 45) yy++;           // intérieur sombre
+      const inner = yy - top; if (inner < 2) continue;
+      const H = yy - y; if (Math.abs(H - L) > Math.max(3, L * 0.35) || yy >= h) continue;   // carré
       const lit = (px, py) => Math.max(P(px, py), P(px-1, py), P(px+1, py)) > v - 40;
       let ok = true;
       for (let k = 2; k < H - 1 && ok; k++){ if (!lit(x, y + k) || !lit(x + L - 1, y + k)) ok = false; }
-      if (!ok){ x += L; continue; }
-      if (isDark) boxes.push({x, y, L}); else checkedBoxes.push({x, y, L});
-      x += L;
+      if (!ok) continue;
+      boxes.push({x, y, L}); x += L;
     }
   }
   const cols = [];
   for (const b of boxes){ const c = cols.find(c => Math.abs(c.x - b.x) <= 3 && Math.abs(c.L - b.L) <= 2); if (c) c.b.push(b); else cols.push({x: b.x, L: b.L, b: [b]}); }
   cols.sort((a, b) => b.b.length - a.b.length);
-  const checkedCols = [];
-  for (const b of checkedBoxes){ const c = checkedCols.find(c => Math.abs(c.x - b.x) <= 3 && Math.abs(c.L - b.L) <= 2); if (c) c.b.push(b); else checkedCols.push({x: b.x, L: b.L, b: [b]}); }
   // ---- 1) Liste : bandes horizontales uniformes longues (haut/bas des cartes), regroupées par colonne
   const runs = [];
   for (let y = 0; y < h; y++){
@@ -388,9 +377,35 @@ function autoZones(img, detectCards){
     cnt = {x: x0, y: y0, w: x1 - x0, h: y1 - y0};
   }
   if (!list) cnt = null;   // sans liste, la colonne de cases trouvée n'est pas fiable
-  // filtres actifs : des cases cochées dans la même colonne que les cases vides du panneau FILTRES
-  const fc2 = cols.length && cols[0].b.length >= 3 ? cols[0] : (checkedCols.length ? checkedCols[0] : null);
-  const filtersActive = fc2 ? checkedCols.some(cc => Math.abs(cc.x - fc2.x) <= 5 && Math.abs(cc.L - fc2.L) <= 2 && cc.b.length >= 1) : false;
+  // filtres actifs : second passage sur la colonne FILTRES connue, en cherchant des cases à bordure présente
+  // mais intérieur NON uniformément sombre (croix, icône colorée ou fond différent)
+  let filtersActive = false;
+  const mainCol = cols.length && cols[0].b.length >= 3 ? cols[0] : null;
+  if (mainCol){
+    const colCx = mainCol.x + (mainCol.L >> 1), L = mainCol.L;
+    const ys = mainCol.b.map(b => b.y), uncheckedSet = new Set(ys.map(y => Math.round(y / L)));
+    const yMin = Math.max(1, ys[0] - 5*L), yMax = Math.min(h - L - 1, ys[ys.length-1] + 5*L);
+    for (let y = yMin; y < yMax && !filtersActive; y++){
+      const v = P(mainCol.x, y);
+      if (v < 85 || P(mainCol.x - 1, y) > v - 35 || P(mainCol.x, y - 1) > v - 35) continue;
+      let lw = 0; while (mainCol.x + lw < w && P(mainCol.x + lw, y) > v - 30) lw++;
+      if (Math.abs(lw - L) > 2) continue;
+      if (uncheckedSet.has(Math.round(y / L))) continue;   // déjà détectée comme vide
+      // vérifier les côtés (c'est bien une case)
+      const litS = (px, py) => Math.max(P(px, py), P(px-1, py), P(px+1, py)) > v - 40;
+      let ok = true;
+      for (let k = 2; k < lw - 1 && ok; k++){ if (!litS(mainCol.x, y+k) || !litS(mainCol.x+lw-1, y+k)) ok = false; }
+      if (!ok) continue;
+      // intérieur : scanner toute la hauteur sur la colonne centrale et plusieurs colonnes
+      let maxBright = 0;
+      for (let iy = y + 1; iy < y + lw + 2 && iy < h; iy++)
+        for (let ix = mainCol.x + 1; ix < mainCol.x + lw - 1; ix += 2){
+          const p = P(ix, iy); if (p > maxBright) maxBright = p;
+        }
+      // si l'intérieur le plus clair est > v - 50 → pas uniformément sombre → case cochée
+      if (maxBright > v - 50) filtersActive = true;
+    }
+  }
   return {list, cnt, nCards: best ? best.cards.length : 0, nBoxes: cols.length ? cols[0].b.length : 0, filtersActive};
 }
 
